@@ -1,17 +1,16 @@
 class ApplianceCard extends HTMLElement {
   setConfig(config) {
     if (!config.entity) {
-      throw new Error("You need to define an entity");
+      throw new Error("Entity is required");
     }
 
     this.config = {
-      name: "Machine",
+      name: "Appliance",
       show_state: true,
       ...config
     };
   }
 
-  // Normalisation des états
   normalizeState(state) {
     const map = {
       on: "washing",
@@ -20,7 +19,6 @@ class ApplianceCard extends HTMLElement {
       paused: "pause",
       complete: "done"
     };
-
     return map[state] || state;
   }
 
@@ -60,7 +58,6 @@ class ApplianceCard extends HTMLElement {
     };
 
     const color = colors[state] || "#666";
-
     const glow = state === "done" || state === "error";
 
     this.innerHTML = `
@@ -100,6 +97,67 @@ class ApplianceCard extends HTMLElement {
   getCardSize() {
     return 3;
   }
+
+  // 🔥 ACTIVE L'ÉDITEUR VISUEL
+  static getConfigElement() {
+    return document.createElement("appliance-card-editor");
+  }
 }
 
 customElements.define("appliance-card", ApplianceCard);
+
+
+
+
+
+// ==========================
+// 🎛️ ÉDITEUR VISUEL
+// ==========================
+
+class ApplianceCardEditor extends HTMLElement {
+  setConfig(config) {
+    this.config = config;
+
+    this.innerHTML = `
+      <div style="padding:16px;">
+        <h3>Appliance Card</h3>
+
+        <label>Entity</label><br>
+        <input id="entity" style="width:100%;" value="${config.entity || ""}"><br><br>
+
+        <label>Name</label><br>
+        <input id="name" style="width:100%;" value="${config.name || ""}"><br><br>
+
+        <label>Show state</label>
+        <input type="checkbox" id="show_state" ${
+          config.show_state !== false ? "checked" : ""
+        }><br><br>
+      </div>
+    `;
+
+    this.querySelector("#entity").addEventListener("change", (e) => {
+      this.config.entity = e.target.value;
+      this._update();
+    });
+
+    this.querySelector("#name").addEventListener("change", (e) => {
+      this.config.name = e.target.value;
+      this._update();
+    });
+
+    this.querySelector("#show_state").addEventListener("change", (e) => {
+      this.config.show_state = e.target.checked;
+      this._update();
+    });
+  }
+
+  _update() {
+    this.dispatchEvent(
+      new CustomEvent("config-changed", {
+        detail: { config: this.config }
+      })
+    );
+  }
+}
+
+customElements.define("appliance-card-editor", ApplianceCardEditor);
