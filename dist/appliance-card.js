@@ -56,3 +56,12 @@ class ApplianceCard extends HTMLElement {
 }
 
 customElements.define("appliance-card", ApplianceCard);
+
+// Cette partie permet à Home Assistant d'afficher la carte dans l'interface "Ajouter au tableau de bord"
+window.customCards = window.customCards || [];
+window.customCards.push({
+  type: "ultra-appliance-card",
+  name: "Ultra Appliance Card",
+  description: "Une carte animée pour vos appareils électroménagers.",
+  preview: true,
+});
