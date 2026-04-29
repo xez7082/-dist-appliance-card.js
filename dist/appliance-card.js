@@ -1,15 +1,16 @@
-// --- DÉFINITION DE L'ÉDITEUR (INTERFACE DE CONFIGURATION) ---
+// --- ÉDITEUR VISUEL AVEC BOUTONS ET SENSORS DYNAMIQUES ---
 class UltraApplianceCardEditor extends HTMLElement {
   setConfig(config) {
-    this._config = config;
+    this._config = { ...config };
+    if (!this._config.sensors) this._config.sensors = [];
   }
 
   set hass(hass) {
     this._hass = hass;
     if (!this.shadowRoot) {
       this.attachShadow({ mode: 'open' });
-      this.render();
     }
+    this.render();
   }
 
   render() {
@@ -17,67 +18,117 @@ class UltraApplianceCardEditor extends HTMLElement {
 
     this.shadowRoot.innerHTML = `
       <style>
-        .card-config { padding: 10px; font-family: sans-serif; }
-        .option { padding: 12px 0; border-bottom: 1px solid #444; }
-        label { font-weight: bold; color: #7CFFB2; display: block; margin-bottom: 5px; }
-        select, input { 
-          width: 100%; padding: 10px; background: #222; color: white; 
-          border: 1px solid #444; border-radius: 4px; box-sizing: border-box;
+        .container { font-family: var(--paper-font-body1_-_font-family); color: white; padding: 10px; }
+        .label { font-weight: bold; color: #7CFFB2; margin-bottom: 10px; display: block; text-transform: uppercase; font-size: 12px; }
+        
+        /* Sélecteur de type avec boutons */
+        .type-selector { display: flex; gap: 10px; margin-bottom: 20px; }
+        .btn-type { 
+          flex: 1; padding: 12px 8px; cursor: pointer; border: 1px solid #7CFFB2; 
+          background: #1a1a1a; color: white; border-radius: 12px; text-align: center;
+          transition: all 0.3s ease; display: flex; flex-direction: column; align-items: center; gap: 5px;
         }
-        select:focus, input:focus { border-color: #7CFFB2; outline: none; }
+        .btn-type.active { background: #7CFFB2; color: #111; box-shadow: 0 0 10px #7CFFB2; }
+        .btn-type ha-icon { --mdc-icon-size: 24px; }
+
+        /* Input et Tags */
+        .sensor-input-group { display: flex; gap: 8px; margin-top: 10px; }
+        input { 
+          flex: 1; padding: 10px; background: #222; color: white; 
+          border: 1px solid #444; border-radius: 8px;
+        }
+        .add-btn { 
+          background: #7CFFB2; color: #111; border: none; padding: 0 15px; 
+          border-radius: 8px; cursor: pointer; font-weight: bold; 
+        }
+        .sensor-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 15px; }
+        .sensor-tag { 
+          background: #333; padding: 6px 12px; border-radius: 20px; 
+          font-size: 11px; display: flex; align-items: center; gap: 8px; border: 1px solid #444;
+        }
+        .delete-btn { color: #ff5252; cursor: pointer; font-weight: bold; font-size: 14px; }
       </style>
-      <div class="card-config">
-        <div class="option">
-          <label>Type d'appareil</label>
-          <select id="appliance_type">
-            <option value="washing_machine" ${this._config.appliance_type === 'washing_machine' ? 'selected' : ''}>Lave-linge</option>
-            <option value="dishwasher" ${this._config.appliance_type === 'dishwasher' ? 'selected' : ''}>Lave-vaisselle</option>
-            <option value="fridge" ${this._config.appliance_type === 'fridge' ? 'selected' : ''}>Réfrigérateur</option>
-          </select>
+
+      <div class="container">
+        <span class="label">Choisir l'appareil</span>
+        <div class="type-selector">
+          <div class="btn-type ${this._config.appliance_type === 'washing_machine' ? 'active' : ''}" data-type="washing_machine">
+            <ha-icon icon="mdi:washing-machine"></ha-icon>
+            <span>Lave-linge</span>
+          </div>
+          <div class="btn-type ${this._config.appliance_type === 'dishwasher' ? 'active' : ''}" data-type="dishwasher">
+            <ha-icon icon="mdi:dishwasher"></ha-icon>
+            <span>Vaisselle</span>
+          </div>
+          <div class="btn-type ${this._config.appliance_type === 'fridge' ? 'active' : ''}" data-type="fridge">
+            <ha-icon icon="mdi:fridge"></ha-icon>
+            <span>Frigo</span>
+          </div>
         </div>
-        <div class="option">
-          <label>Nom de l'affichage</label>
-          <input type="text" id="name" value="${this._config.name || ''}" placeholder="Ex: Lave-linge Cuisine">
+
+        <span class="label">Ajouter des Sensors (Entités)</span>
+        <div class="sensor-input-group">
+          <input type="text" id="new-sensor" placeholder="ex: sensor.lave_linge_power">
+          <button class="add-btn" id="add-btn">AJOUTER</button>
         </div>
-        <div class="option">
-          <label>Entité Principale (État)</label>
-          <input type="text" id="entity" value="${this._config.entity || ''}" placeholder="sensor.mon_appareil_etat">
+
+        <div class="sensor-list">
+          ${this._config.sensors.map((s, index) => `
+            <div class="sensor-tag">
+              <span>${s}</span>
+              <span class="delete-btn" data-index="${index}">×</span>
+            </div>
+          `).join('')}
         </div>
-        <p style="color: #888; font-size: 0.8em;">Configurez les autres capteurs (power, energy, etc.) dans l'éditeur YAML pour plus de précision.</p>
       </div>
     `;
 
-    this.shadowRoot.querySelectorAll('select, input').forEach(el => {
-      el.addEventListener('change', (ev) => {
-        const target = ev.target;
-        this._config = { ...this._config, [target.id]: target.value };
-        const event = new CustomEvent('config-changed', {
-          detail: { config: this._config },
-          bubbles: true,
-          composed: true
-        });
-        this.dispatchEvent(event);
+    // Events pour les boutons de type
+    this.shadowRoot.querySelectorAll('.btn-type').forEach(btn => {
+      btn.addEventListener('click', () => {
+        this._config.appliance_type = btn.dataset.type;
+        this.fireConfigChanged();
       });
     });
+
+    // Event pour ajouter un sensor
+    this.shadowRoot.querySelector('#add-btn').addEventListener('click', () => {
+      const input = this.shadowRoot.querySelector('#new-sensor');
+      if (input.value && input.value.includes('.')) {
+        this._config.sensors.push(input.value);
+        input.value = '';
+        this.fireConfigChanged();
+      }
+    });
+
+    // Event pour supprimer un sensor
+    this.shadowRoot.querySelectorAll('.delete-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = btn.dataset.index;
+        this._config.sensors.splice(idx, 1);
+        this.fireConfigChanged();
+      });
+    });
+  }
+
+  fireConfigChanged() {
+    const event = new CustomEvent('config-changed', {
+      detail: { config: this._config },
+      bubbles: true,
+      composed: true
+    });
+    this.dispatchEvent(event);
   }
 }
 customElements.define("ultra-appliance-card-editor", UltraApplianceCardEditor);
 
 
-// --- DÉFINITION DE LA CARTE PRINCIPALE ---
+// --- LA CARTE PRINCIPALE ---
 class UltraApplianceCard extends HTMLElement {
-  
-  static getConfigElement() {
-    return document.createElement("ultra-appliance-card-editor");
-  }
+  static getConfigElement() { return document.createElement("ultra-appliance-card-editor"); }
 
   static getStubConfig() {
-    return {
-      appliance_type: "washing_machine",
-      name: "Mon Appareil",
-      entity: "none",
-      power_entity: "none"
-    };
+    return { appliance_type: "washing_machine", sensors: [] };
   }
 
   setConfig(config) {
@@ -87,115 +138,68 @@ class UltraApplianceCard extends HTMLElement {
   set hass(hass) {
     if (!this.config || !hass) return;
 
-    const config = this.config;
-    const type = config.appliance_type || 'washing_machine';
-    const mainState = hass.states[config.entity];
-
     if (!this.content) {
       this.innerHTML = `
-        <ha-card style="background: #111; border: 1px solid #7CFFB2; border-radius: 20px; padding: 20px; color: white;">
-          <div id="header" style="text-align:center; color:#7CFFB2; letter-spacing:2px; font-weight:bold; margin-bottom:15px; font-size: 1.2em; text-transform: uppercase;"></div>
-          <div style="display: flex; justify-content: space-around; align-items: center; margin-bottom: 20px;">
-            <div id="viz-container"></div>
-            <div id="status-text" style="text-align: center;">
-                <div style="font-size: 0.8em; opacity: 0.6;">STATUT ACTUEL</div>
-                <div id="state-val" style="font-size: 1.2em; font-weight: bold; color: #7CFFB2;"></div>
+        <ha-card style="background: #111; border: 1px solid #7CFFB2; border-radius: 24px; padding: 20px; color: white; overflow: hidden;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px;">
+            <div id="icon-container" style="background: #1a1a1a; padding: 12px; border-radius: 15px; border: 1px solid #333;">
+              <ha-icon id="main-icon" icon="mdi:washing-machine" style="color: #7CFFB2; --mdc-icon-size: 32px;"></ha-icon>
             </div>
+            <div id="wave-container"></div>
           </div>
-          <div id="sensor-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; font-size: 0.85em; border-top: 1px solid #333; padding-top: 15px;"></div>
+          <div id="sensor-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px;"></div>
         </ha-card>
       `;
       this.content = this.querySelector("#sensor-grid");
     }
 
-    // Mise à jour du Titre et État
-    this.querySelector("#header").textContent = config.name || "Appareil";
-    this.querySelector("#state-val").textContent = mainState ? mainState.state : "Inconnu";
+    // Mise à jour de l'icône selon le type
+    const icons = { washing_machine: 'mdi:washing-machine', dishwasher: 'mdi:dishwasher', fridge: 'mdi:fridge' };
+    this.querySelector("#main-icon").icon = icons[this.config.appliance_type] || 'mdi:help-circle';
 
-    // Calcul Progression
-    const prog = parseFloat(hass.states[config.progress_entity]?.state) || 0;
-    const level = 100 - prog;
+    // Animation de vague (basée sur le premier sensor si c'est un % ou fixe à 50%)
+    let level = 50;
+    const firstSensor = hass.states[this.config.sensors[0]];
+    if (firstSensor && !isNaN(parseFloat(firstSensor.state))) {
+        level = 100 - (parseFloat(firstSensor.state) % 101);
+    }
 
-    // Rendu du Hublot Animé
-    this.querySelector("#viz-container").innerHTML = `
-      <svg viewBox="0 0 100 100" style="width:100px; height:100px; border-radius:50%; border: 2.5px solid #7CFFB2; background:#051515; overflow:hidden;">
-        <path d="M 0,${level} C 25,${level-5} 75,${level+5} 100,${level} L 100,100 L 0,100 Z" fill="#7CFFB2" opacity="0.6">
+    this.querySelector("#wave-container").innerHTML = `
+      <svg viewBox="0 0 100 100" style="width:70px; height:70px; border-radius:50%; border: 2px solid #7CFFB2; background:#051515; box-shadow: 0 0 15px rgba(124, 255, 178, 0.2);">
+        <path d="M 0,${level} C 25,${level-5} 75,${level+5} 100,${level} L 100,100 L 0,100 Z" fill="#7CFFB2" opacity="0.5">
           <animate attributeName="d" dur="3s" repeatCount="indefinite" values="M 0,${level} C 25,${level-5} 75,${level+5} 100,${level} L 100,100 L 0,100 Z; M 0,${level} C 25,${level+5} 75,${level-5} 100,${level} L 100,100 L 0,100 Z; M 0,${level} C 25,${level-5} 75,${level+5} 100,${level} L 100,100 L 0,100 Z" />
         </path>
-        <text x="50" y="55" text-anchor="middle" fill="white" font-size="18" font-weight="bold">${prog}%</text>
       </svg>
     `;
 
-    // Génération des 10 Capteurs
-    let sensorsHTML = '';
-    const sensorList = this._getSensorsForType(type, config);
-    
-    sensorList.forEach(s => {
-      const entityState = hass.states[s.id];
-      const val = entityState ? entityState.state : '--';
-      const unit = (entityState && entityState.attributes.unit_of_measurement) ? entityState.attributes.unit_of_measurement : '';
-      sensorsHTML += `<div style="display:flex; align-items:center; gap:8px;">
-        <span>${s.icon}</span> 
-        <span style="opacity:0.7;">${s.label}:</span> 
-        <span style="font-weight:bold; margin-left:auto;">${val}${unit}</span>
-      </div>`;
+    // Génération de la grille des sensors
+    let html = '';
+    this.config.sensors.forEach(entityId => {
+      const stateObj = hass.states[entityId];
+      if (stateObj) {
+        const name = stateObj.attributes.friendly_name || entityId.split('.')[1];
+        const unit = stateObj.attributes.unit_of_measurement || '';
+        html += `
+          <div style="background: rgba(255,255,255,0.03); padding: 10px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05);">
+            <div style="font-size: 10px; color: #7CFFB2; text-transform: uppercase; opacity: 0.8; letter-spacing: 1px; margin-bottom: 4px;">${name}</div>
+            <div style="font-size: 15px; font-weight: bold;">${stateObj.state} <span style="font-size: 10px; opacity: 0.6;">${unit}</span></div>
+          </div>
+        `;
+      }
     });
-    
-    this.content.innerHTML = sensorsHTML;
+    this.content.innerHTML = html;
   }
 
-  _getSensorsForType(type, config) {
-    const common = [
-      { label: "Puissance", id: config.power_entity, icon: "⚡" },
-      { label: "Énergie", id: config.energy_entity, icon: "📊" },
-      { label: "Porte", id: config.door_entity, icon: "🚪" }
-    ];
-
-    const mapping = {
-      washing_machine: [
-        ...common,
-        { label: "Temp.", id: config.temp_entity, icon: "🌡️" },
-        { label: "Essorage", id: config.spin_entity, icon: "🌀" },
-        { label: "Fin", id: config.end_entity, icon: "⏰" },
-        { label: "Eau", id: config.water_entity, icon: "💧" },
-        { label: "Mode", id: config.mode_entity, icon: "⚙️" },
-        { label: "Tambour", id: config.drum_entity, icon: "📦" },
-        { label: "Vitesse", id: config.speed_entity, icon: "🚀" }
-      ],
-      dishwasher: [
-        ...common,
-        { label: "Sel", id: config.salt_entity, icon: "🧂" },
-        { label: "Rinçage", id: config.rinse_entity, icon: "✨" },
-        { label: "Programme", id: config.prog_entity, icon: "📋" },
-        { label: "Temp.", id: config.temp_entity, icon: "🌡️" },
-        { label: "Eau", id: config.water_entity, icon: "💧" },
-        { label: "Fin", id: config.end_entity, icon: "⏰" },
-        { label: "Séchage", id: config.dry_entity, icon: "🌬️" }
-      ],
-      fridge: [
-        { label: "Temp Frigo", id: config.entity, icon: "🌡️" },
-        { label: "Temp Congél", id: config.freezer_temp_entity, icon: "❄️" },
-        ...common,
-        { label: "Humidité", id: config.hum_entity, icon: "💧" },
-        { label: "Alerte", id: config.alert_entity, icon: "⚠️" },
-        { label: "Eco", id: config.eco_entity, icon: "🍃" },
-        { label: "Filtre", id: config.filter_entity, icon: "🚰" },
-        { label: "Lumière", id: config.light_entity, icon: "💡" }
-      ]
-    };
-    return mapping[type] || [];
-  }
-
-  getCardSize() { return 6; }
+  getCardSize() { return 4; }
 }
 
 customElements.define("ultra-appliance-card", UltraApplianceCard);
 
-// Configuration pour le sélecteur de cartes Lovelace
+// Enregistrement HACS
 window.customCards = window.customCards || [];
 window.customCards.push({
   type: "ultra-appliance-card",
-  name: "Ultra Appliance Card",
-  description: "Dashboard pro pour Lave-linge, Lave-vaisselle et Frigo avec éditeur visuel.",
+  name: "Ultra Appliance Card (Custom)",
+  description: "Dashboard avec sélecteur d'appareil et ajout dynamique de sensors.",
   preview: true,
 });
