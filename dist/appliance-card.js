@@ -205,20 +205,26 @@ class ApplianceCard extends HTMLElement {
     container.innerHTML = '';
     const sensors = (this._config.sensors && this._config.sensors[type]) || [];
 
-    sensors.forEach(s => {
+sensors.forEach(s => {
       const state = this._hass.states[s.entity];
-      if (!state) return;
-      const div   = document.createElement('div');
-      div.style.cssText = `background: rgba(255,255,255,0.05); padding: 8px; border-radius: 6px; border-left: 3px solid ${color};`;
+      const div = document.createElement('div');
+      div.style.cssText = `background: rgba(255,255,255,0.05); padding: 8px; border-radius: 6px; border-left: 3px solid ${state ? color : '#ff5252'}; transition: all 0.3s;`;
+      
       const title = s.name || s.entity.split('.').pop().replace(/_/g, ' ');
-      div.innerHTML = `
-        <div style="font-size: 8px; opacity: 0.6; text-transform: uppercase;">${title}</div>
-        <div style="font-size: 11px; font-weight: bold;">
-          ${state.state} ${state.attributes.unit_of_measurement || ''}
-        </div>`;
+      
+      if (state) {
+        div.innerHTML = `
+          <div style="font-size: 8px; opacity: 0.6; text-transform: uppercase;">${title}</div>
+          <div style="font-size: 11px; font-weight: bold;">
+            ${state.state} ${state.attributes.unit_of_measurement || ''}
+          </div>`;
+      } else {
+        div.innerHTML = `
+          <div style="font-size: 8px; color: #ff5252; text-transform: uppercase;">Erreur</div>
+          <div style="font-size: 10px; opacity: 0.5;">Entité introuvable</div>`;
+      }
       container.appendChild(div);
     });
-  }
 
   // Changement de vue interne — pas de config-changed pour ne pas déclencher une sauvegarde HA
   _switch(type) {
