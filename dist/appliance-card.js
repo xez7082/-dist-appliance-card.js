@@ -133,20 +133,59 @@ class ApplianceCard extends HTMLElement {
     this._update();
   }
 
-  _update() {
+_update() {
     const type = this._type;
     const entities = this._config.entities || {};
     const mainEnt = entities[type];
     const stateObj = this._hass.states[mainEnt];
     const rawState = stateObj ? stateObj.state.toLowerCase() : 'off';
 
-    const stateMap = {
-      wash: 'lavage', rinse: 'rincage', spin: 'essorage',
-      finish: 'findecycle', off: 'enveille', none: 'enveille',
-    };
-    const imgName = stateMap[rawState] || rawState.replace(/^ai_/, '');
+    let imgName = '';
+    let color = '#7CFFB2'; // Couleur par défaut (Vert fluo)
+
+    if (type === 'washing_machine') {
+      // LOGIQUE LAVE-LINGE
+      const washingMap = {
+        'wash': 'lavage', 'rinse': 'rincage', 'spin': 'essorage',
+        'finish': 'findecycle', 'off': 'enveille', 'none': 'enveille'
+      };
+      imgName = washingMap[rawState] || rawState.replace(/^ai_/, '');
+      
+      // Couleurs spécifiques Linge
+      const colors = { lavage: '#2980b9', rincage: '#1abc9c', findecycle: '#2ecc71' };
+      color = colors[imgName] || '#7CFFB2';
+
+    } else if (type === 'dishwasher') {
+      // LOGIQUE LAVE-VAISSELLE (Tes nouveaux fichiers)
+      const dishwasherMap = {
+        'running': 'enmarche',
+        'on': 'enmarche',
+        'off': 'inactif',
+        'idle': 'inactif',
+        'paused': 'pause',
+        'ready': 'pret',
+        'completed': 'terminer',
+        'finished': 'terminer',
+        'error': 'errour',
+        'delayed_start': 'delayedstart',
+        'action_required': 'actionrequise',
+        'cancelled': 'abandon'
+      };
+      imgName = dishwasherMap[rawState] || 'inactif';
+      
+      // Couleurs spécifiques Vaisselle
+      if (imgName === 'enmarche') color = '#2ecc71';
+      if (imgName === 'errour' || imgName === 'abandon') color = '#ff5252';
+      if (imgName === 'pause' || imgName === 'actionrequise') color = '#ffa500';
+
+    } else {
+      // LOGIQUE FRIGO / AUTRE
+      imgName = 'inactif';
+    }
+
     const imgUrl = `https://cdn.statically.io/gh/xez7082/-dist-appliance-card.js/main/img/${imgName}.png`;
-    const color = { lavage: '#2980b9', rincage: '#1abc9c', findecycle: '#2ecc71' }[imgName] || '#7CFFB2';
+
+    // --- LE RESTE DU CODE (Render, img.src, etc.) RESTE IDENTIQUE ---
 
     if (!this._base) {
       this.innerHTML = `
