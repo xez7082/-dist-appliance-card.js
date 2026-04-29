@@ -1,6 +1,7 @@
 // --- 1. L'ÉDITEUR ---
 class ApplianceCardEditor extends HTMLElement {
   setConfig(config) {
+    // Initialisation immédiate pour éviter le "undefined"
     this._config = { appliance_type: 'washing_machine', sensors: [], ...config };
   }
 
@@ -8,12 +9,13 @@ class ApplianceCardEditor extends HTMLElement {
     this._hass = hass;
     if (!this.shadowRoot) {
       this.attachShadow({ mode: "open" });
-      this._firstRender();
+      this._firstRender(); // On construit l'UI une seule fois
     }
   }
 
-  // On ne fait le rendu HTML structurel qu'UNE SEULE FOIS
   _firstRender() {
+    if (!this._config) return;
+
     this.shadowRoot.innerHTML = `
       <style>
         .config-box { padding: 15px; font-family: sans-serif; background: #1c1c1c; color: white; border-radius: 10px; }
@@ -29,7 +31,7 @@ class ApplianceCardEditor extends HTMLElement {
           border-radius: 8px; cursor: pointer; font-weight: bold; color: #111;
         }
         .tag-list { margin-top: 15px; display: flex; flex-wrap: wrap; gap: 5px; }
-        .tag { background: #333; padding: 5px 10px; border-radius: 15px; font-size: 11px; display: flex; align-items: center; }
+        .tag { background: #333; padding: 5px 10px; border-radius: 15px; font-size: 11px; display: flex; align-items: center; border: 1px solid #444; }
         .del { color: #ff5252; margin-left: 8px; cursor: pointer; font-weight: bold; }
       </style>
       <div class="config-box">
@@ -52,14 +54,14 @@ class ApplianceCardEditor extends HTMLElement {
     const select = this.shadowRoot.getElementById('type-select');
     const addBtn = this.shadowRoot.getElementById('add-btn');
 
-    // Bloquer la propagation pour sauver le curseur
+    // BLOCAGE DU REFRESH (Pour que le curseur reste en place)
     const stop = (e) => e.stopPropagation();
     input.addEventListener('input', stop);
     input.addEventListener('keydown', stop);
     input.addEventListener('mousedown', stop);
 
-    // Initialiser les valeurs
-    select.value = this._config.appliance_type;
+    // Chargement des valeurs actuelles
+    select.value = this._config.appliance_type || 'washing_machine';
     this._updateTags();
 
     select.onchange = () => {
@@ -67,10 +69,11 @@ class ApplianceCardEditor extends HTMLElement {
       this._save();
     };
 
-    addBtn.onclick = () => {
+    addBtn.onclick = (e) => {
+      e.stopPropagation();
       const val = input.value.trim();
       if (val.includes('.')) {
-        this._config.sensors = [...this._config.sensors, val];
+        this._config.sensors = [...(this._config.sensors || []), val];
         input.value = "";
         this._updateTags();
         this._save();
@@ -80,12 +83,14 @@ class ApplianceCardEditor extends HTMLElement {
 
   _updateTags() {
     const container = this.shadowRoot.getElementById('tag-container');
-    container.innerHTML = this._config.sensors.map((s, i) => `
+    if (!container) return;
+    container.innerHTML = (this._config.sensors || []).map((s, i) => `
       <div class="tag">${s} <span class="del" data-index="${i}">×</span></div>
     `).join('');
 
     container.querySelectorAll('.del').forEach(btn => {
-      btn.onclick = () => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
         this._config.sensors.splice(btn.dataset.index, 1);
         this._updateTags();
         this._save();
@@ -100,9 +105,6 @@ class ApplianceCardEditor extends HTMLElement {
       composed: true
     }));
   }
-
-  // On vide le rendu automatique pour ne pas tout casser
-  render() {} 
 }
 customElements.define("appliance-card-editor", ApplianceCardEditor);
 
@@ -111,10 +113,15 @@ class ApplianceCard extends HTMLElement {
   static getConfigElement() { return document.createElement("appliance-card-editor"); }
   static getStubConfig() { return { appliance_type: "washing_machine", sensors: [] }; }
 
-  setConfig(config) { this.config = config; }
+  setConfig(config) {
+    if (!config) throw new Error("Config invalide");
+    this.config = config;
+  }
 
   set hass(hass) {
+    // PROTECTION : Si la config n'est pas chargée, on arrête
     if (!this.config || !hass) return;
+
     if (!this.content) {
       this.innerHTML = `<ha-card style="padding:16px; background:#111; color:white; border:1px solid #7CFFB2; border-radius:15px;"></ha-card>`;
       this.content = this.querySelector("ha-card");
@@ -122,21 +129,25 @@ class ApplianceCard extends HTMLElement {
 
     const type = this.config.appliance_type || 'washing_machine';
     const icons = { washing_machine: "🧺", dishwasher: "🍽️", fridge: "❄️" };
+    
     let sHtml = "";
     (this.config.sensors || []).forEach(id => {
       const s = hass.states[id];
-      if (s) sHtml += `<div style="background:#222; padding:8px; border-radius:8px; border-left:3px solid #7CFFB2;">
-        <div style="font-size:10px; opacity:0.6;">${id.split('.').pop()}</div>
-        <div style="font-weight:bold;">${s.state}</div>
-      </div>`;
+      if (s) sHtml += `
+        <div style="background:#222; padding:10px; border-radius:8px; border-left:3px solid #7CFFB2;">
+          <div style="font-size:10px; opacity:0.6;">${id.split('.').pop()}</div>
+          <div style="font-weight:bold;">${s.state} ${s.attributes.unit_of_measurement || ''}</div>
+        </div>`;
     });
 
     this.content.innerHTML = `
       <div style="display:flex; align-items:center; gap:12px; margin-bottom:15px;">
         <span style="font-size:30px;">${icons[type] || '❓'}</span>
-        <span style="font-weight:bold; color:#7CFFB2;">${type.toUpperCase()}</span>
+        <span style="font-weight:bold; color:#7CFFB2;">${type.toUpperCase().replace('_', ' ')}</span>
       </div>
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">${sHtml || 'Aucun capteur'}</div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+        ${sHtml || '<div style="grid-column:span 2; opacity:0.3; font-size:12px;">Aucun capteur configuré</div>'}
+      </div>
     `;
   }
 }
