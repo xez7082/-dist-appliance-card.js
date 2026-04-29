@@ -1,5 +1,5 @@
 // ==========================================
-// 🎛️ ÉDITEUR VISUEL (Multi-Appareils & 10 Sensors)
+// 🎛️ ÉDITEUR VISUEL (Correction Validation)
 // ==========================================
 class ApplianceCardEditor extends HTMLElement {
   setConfig(config) {
@@ -17,69 +17,96 @@ class ApplianceCardEditor extends HTMLElement {
     this.innerHTML = `
       <div style="padding: 15px; font-family: sans-serif; background: #1c1c1c; color: white; border-radius: 12px;">
         <div style="display: flex; gap: 5px; margin-bottom: 20px;">
-          <button class="tab-btn" data-type="washing_machine" style="flex:1; padding:10px; cursor:pointer; background:${type === 'washing_machine' ? '#7CFFB2' : '#333'}; color:${type === 'washing_machine' ? '#000' : '#fff'}; border:none; border-radius:5px; font-weight:bold; transition: 0.3s;">LINGE</button>
-          <button class="tab-btn" data-type="dishwasher" style="flex:1; padding:10px; cursor:pointer; background:${type === 'dishwasher' ? '#7CFFB2' : '#333'}; color:${type === 'dishwasher' ? '#000' : '#fff'}; border:none; border-radius:5px; font-weight:bold; transition: 0.3s;">VAISSELLE</button>
-          <button class="tab-btn" data-type="fridge" style="flex:1; padding:10px; cursor:pointer; background:${type === 'fridge' ? '#7CFFB2' : '#333'}; color:${type === 'fridge' ? '#000' : '#fff'}; border:none; border-radius:5px; font-weight:bold; transition: 0.3s;">FRIGO</button>
+          <button class="tab-btn" data-type="washing_machine" style="flex:1; padding:10px; cursor:pointer; background:${type === 'washing_machine' ? '#7CFFB2' : '#333'}; color:${type === 'washing_machine' ? '#000' : '#fff'}; border:none; border-radius:5px; font-weight:bold;">LINGE</button>
+          <button class="tab-btn" data-type="dishwasher" style="flex:1; padding:10px; cursor:pointer; background:${type === 'dishwasher' ? '#7CFFB2' : '#333'}; color:${type === 'dishwasher' ? '#000' : '#fff'}; border:none; border-radius:5px; font-weight:bold;">VAISSELLE</button>
+          <button class="tab-btn" data-type="fridge" style="flex:1; padding:10px; cursor:pointer; background:${type === 'fridge' ? '#7CFFB2' : '#333'}; color:${type === 'fridge' ? '#000' : '#fff'}; border:none; border-radius:5px; font-weight:bold;">FRIGO</button>
         </div>
 
         <label style="font-weight: bold; font-size: 11px; color: #7CFFB2;">CAPTEUR D'ÉTAT (${type.toUpperCase()})</label>
         <input id="main-entity" placeholder="sensor.etat_du_cycle" value="${this._config.entities[type] || ''}"
                style="width: 100%; padding: 12px; background: #000; color: #fff; border: 1px solid #444; border-radius: 8px; margin: 8px 0 15px; box-sizing: border-box; outline:none;">
 
-        <label style="font-weight: bold; font-size: 11px; color: #7CFFB2;">CAPTEURS DE DONNÉES (MAX 10)</label>
+        <label style="font-weight: bold; font-size: 11px; color: #7CFFB2;">AJOUTER UN CAPTEUR (MAX 10)</label>
         <div style="display: flex; gap: 5px; margin: 8px 0;">
           <input id="new-sensor" placeholder="sensor.puissance" style="flex: 1; padding: 12px; background: #000; color: #fff; border: 1px solid #444; border-radius: 8px; outline:none;">
-          <button id="add-sensor" style="background: #7CFFB2; border: none; padding: 0 15px; border-radius: 8px; cursor: pointer; font-weight: bold; color: #000;">+</button>
+          <button id="add-sensor" style="background: #7CFFB2; border: none; min-width: 45px; border-radius: 8px; cursor: pointer; font-weight: bold; color: #000; font-size: 20px;">+</button>
         </div>
         <div id="sensor-list" style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px;"></div>
       </div>
     `;
 
-    // Gestion des Onglets
+    // --- GESTION DES ONGLETS ---
     this.querySelectorAll('.tab-btn').forEach(btn => {
       btn.onclick = () => { this._config.appliance_type = btn.dataset.type; this._render(); this._save(); };
     });
 
-    // Entité principale
     const mainInput = this.querySelector('#main-entity');
-    const stop = (e) => e.stopPropagation();
-    mainInput.addEventListener('input', stop);
-    mainInput.onchange = () => { this._config.entities[type] = mainInput.value.trim(); this._save(); };
+    const sensorInput = this.querySelector('#new-sensor');
+    const addBtn = this.querySelector('#add-sensor');
 
-    // Ajout Capteurs
-    this.querySelector('#add-sensor').onclick = () => {
-      const sInput = this.querySelector('#new-sensor');
-      if (sInput.value.includes('.') && this._config.sensors[type].length < 10) {
-        this._config.sensors[type].push(sInput.value.trim());
-        sInput.value = "";
+    // Bloquer la propagation pour pouvoir taper
+    const stop = (e) => e.stopPropagation();
+    [mainInput, sensorInput].forEach(el => {
+      el.addEventListener('input', stop);
+      el.addEventListener('keydown', stop);
+    });
+
+    mainInput.onchange = () => {
+      this._config.entities[type] = mainInput.value.trim();
+      this._save();
+    };
+
+    // --- FONCTION D'AJOUT ---
+    const addFn = () => {
+      const val = sensorInput.value.trim();
+      if (val.includes('.') && this._config.sensors[type].length < 10) {
+        this._config.sensors[type] = [...this._config.sensors[type], val];
+        sensorInput.value = "";
         this._renderSensors();
         this._save();
       }
     };
+
+    addBtn.onclick = addFn;
+    sensorInput.onkeypress = (e) => { if (e.key === 'Enter') { e.preventDefault(); addFn(); } };
+
     this._renderSensors();
   }
 
   _renderSensors() {
     const type = this._config.appliance_type;
     const container = this.querySelector('#sensor-list');
+    if (!container) return;
+    
     container.innerHTML = (this._config.sensors[type] || []).map((s, i) => `
       <div style="background: #222; padding: 6px 12px; border-radius: 15px; font-size: 10px; display:flex; align-items:center; border:1px solid #444;">
-        ${s.split('.').pop()} <span class="del" data-i="${i}" style="color:#ff5252; cursor:pointer; margin-left:8px; font-weight:bold; font-size:14px;">×</span>
+        ${s.split('.').pop()} 
+        <span class="del" data-i="${i}" style="color:#ff5252; cursor:pointer; margin-left:8px; font-weight:bold; font-size:16px; padding: 0 4px;">×</span>
       </div>
     `).join('');
 
     container.querySelectorAll('.del').forEach(d => {
-      d.onclick = () => { this._config.sensors[type].splice(d.dataset.i, 1); this._renderSensors(); this._save(); };
+      d.onclick = (e) => {
+        e.stopPropagation();
+        this._config.sensors[type].splice(parseInt(d.dataset.i), 1);
+        this._renderSensors();
+        this._save();
+      };
     });
   }
 
-  _save() { this.dispatchEvent(new CustomEvent("config-changed", { detail: { config: this._config }, bubbles: true, composed: true })); }
+  _save() {
+    this.dispatchEvent(new CustomEvent("config-changed", {
+      detail: { config: this._config },
+      bubbles: true,
+      composed: true
+    }));
+  }
 }
 customElements.define("appliance-card-editor", ApplianceCardEditor);
 
-
 // ==========================================
-// 🧺 LA CARTE (MAPPING SAMSUNG/LG & CDN FIX)
+// 🧺 LA CARTE (SAMSUNG/LG & CDN FIX)
 // ==========================================
 class ApplianceCard extends HTMLElement {
   static getConfigElement() { return document.createElement("appliance-card-editor"); }
@@ -89,15 +116,13 @@ class ApplianceCard extends HTMLElement {
     if (!state) return 'enveille';
     const s = state.toLowerCase();
     const map = {
-      // Mapping Linge (tes options)
       'wash': 'lavage', 'ai_wash': 'lavage', 'pre_wash': 'lavage', 'air_wash': 'lavage', 'weight_sensing': 'lavage',
-      'filling': 'remplissage', 
-      'rinse': 'rincage', 'ai_rinse': 'rincage',
-      'spin': 'essorage', 'ai_spin': 'essorage',
-      'finish': 'findecycle', 'complete': 'findecycle', 'done': 'findecycle', 'cooling': 'findecycle', 'drying': 'findecycle', 'wrinkle_prevent': 'findecycle',
-      'pause': 'pause', 'paused': 'pause', 
-      'none': 'enveille', 'delay_wash': 'enveille', 'off': 'enveille', 'idle': 'enveille',
-      'freeze_protection': 'erreur', 'error': 'erreur', 'fault': 'erreur'
+      'filling': 'remplissage', 'rinse': 'rincage', 'ai_rinse': 'rincage',
+      'spin': 'essorage', 'ai_spin': 'essorage', 'finish': 'findecycle', 
+      'complete': 'findecycle', 'done': 'findecycle', 'cooling': 'findecycle', 
+      'drying': 'findecycle', 'wrinkle_prevent': 'findecycle', 'pause': 'pause', 
+      'paused': 'pause', 'none': 'enveille', 'delay_wash': 'enveille', 
+      'off': 'enveille', 'idle': 'enveille', 'freeze_protection': 'erreur', 'error': 'erreur'
     };
     return map[s] || s;
   }
@@ -107,15 +132,14 @@ class ApplianceCard extends HTMLElement {
     const mainEntity = (this.config.entities || {})[type];
     const entityState = hass.states[mainEntity];
     
-    // Structure initiale Anti-Scintillement
     if (!this._baseCard) {
       this.innerHTML = `
-        <ha-card style="border-radius:24px; overflow:hidden; background:#111; color:white; border:1px solid #333; transition: border-color 0.5s;">
+        <ha-card style="border-radius:24px; overflow:hidden; background:#111; color:white; border:1px solid #333;">
           <div id="header" style="padding:15px; text-align:center; background:rgba(255,255,255,0.03); color:#7CFFB2; font-weight:bold; text-transform:uppercase; letter-spacing:1px; font-size:14px; border-bottom:1px solid #222;"></div>
-          <div style="padding:20px; display:flex; align-items:center; justify-content:center; min-height:220px; position:relative;">
+          <div style="padding:20px; display:flex; align-items:center; justify-content:center; min-height:220px;">
             <img id="main-img" style="width:85%; max-height:190px; object-fit:contain; transition: filter 0.5s ease;">
           </div>
-          <div id="state-text" style="text-align:center; padding:12px; font-weight:bold; letter-spacing:2px; background:rgba(0,0,0,0.4); font-size:13px; transition: color 0.5s;"></div>
+          <div id="state-text" style="text-align:center; padding:12px; font-weight:bold; letter-spacing:2px; background:rgba(0,0,0,0.4); font-size:13px;"></div>
           <div id="sensor-grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; padding:15px;"></div>
         </ha-card>`;
       this._baseCard = this.querySelector('ha-card');
@@ -127,11 +151,8 @@ class ApplianceCard extends HTMLElement {
 
     const rawState = entityState ? entityState.state : 'none';
     const state = this.normalizeState(rawState);
-    
-    // CDN STATICALLY pour forcer le chargement GitHub
     const baseUrl = "https://cdn.statically.io/gh/xez7082/-dist-appliance-card.js/main/img/";
     
-    // Mise à jour Image avec Sécurité Error
     const newSrc = `${baseUrl}${state}.png`;
     if (this._lastImage !== newSrc) {
         this._img.src = newSrc;
@@ -139,27 +160,24 @@ class ApplianceCard extends HTMLElement {
         this._lastImage = newSrc;
     }
 
-    // Couleurs et Titres
     const colors = { enveille:"#888", lavage:"#2980b9", rincage:"#1abc9c", essorage:"#9b59b6", findecycle:"#2ecc71", erreur:"#e74c3c", pause:"#f39c12" };
     const color = colors[state] || "#7CFFB2";
     
     const titles = { washing_machine: "Lave-Linge", dishwasher: "Lave-Vaisselle", fridge: "Réfrigérateur" };
     this._head.textContent = titles[type];
-    
     this._stateBox.textContent = rawState.replace('_', ' ').toUpperCase();
     this._stateBox.style.color = color;
     this._baseCard.style.borderColor = `${color}66`;
     this._img.style.filter = `drop-shadow(0 0 10px ${color}44)`;
 
-    // Rendu des 10 Capteurs
     const sensors = (this.config.sensors || {})[type] || [];
     let html = "";
     sensors.forEach(id => {
       const s = hass.states[id];
       if (s) {
         html += `
-          <div style="background:rgba(255,255,255,0.03); padding:10px; border-radius:14px; border:1px solid #222; border-left:3px solid ${color}; transition: border-color 0.5s;">
-            <div style="font-size:9px; opacity:0.5; text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${id.split('.').pop().replace('_',' ')}</div>
+          <div style="background:rgba(255,255,255,0.03); padding:10px; border-radius:14px; border:1px solid #222; border-left:3px solid ${color};">
+            <div style="font-size:9px; opacity:0.5; text-transform:uppercase; white-space:nowrap; overflow:hidden;">${id.split('.').pop().replace('_',' ')}</div>
             <div style="font-weight:bold; font-size:12px;">${s.state} <span style="font-size:10px; opacity:0.7;">${s.attributes.unit_of_measurement || ''}</span></div>
           </div>`;
       }
@@ -169,11 +187,5 @@ class ApplianceCard extends HTMLElement {
 }
 customElements.define("appliance-card", ApplianceCard);
 
-// Déclaration de la carte dans HA
 window.customCards = window.customCards || [];
-window.customCards.push({
-  type: "appliance-card",
-  name: "Appliance Card Pro (Samsung/LG)",
-  description: "Supporte Linge, Vaisselle et Frigo avec 10 capteurs et images GitHub.",
-  preview: true
-});
+window.customCards.push({ type: "appliance-card", name: "Appliance Pro (Fix Validation)", preview: true });
