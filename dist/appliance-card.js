@@ -1,165 +1,157 @@
 // ==========================
-// 🎛️ ÉDITEUR VISUEL (STABLE)
+// 🎛️ ÉDITEUR VISUEL (3 APPAREILS / 10 SENSORS)
 // ==========================
 class ApplianceCardEditor extends HTMLElement {
   setConfig(config) {
     this._config = { 
-        entity: '', 
-        name: 'Appliance', 
-        show_state: true, 
+        appliance_type: 'washing_machine',
+        entities: { washing_machine: '', dishwasher: '', fridge: '' },
+        names: { washing_machine: 'Lave-Linge', dishwasher: 'Lave-Vaisselle', fridge: 'Réfrigérateur' },
+        sensors: { washing_machine: [], dishwasher: [], fridge: [] },
         ...config 
     };
     this._render();
   }
 
   _render() {
+    const type = this._config.appliance_type;
     this.innerHTML = `
-      <div style="padding: 15px; font-family: sans-serif; background: #1c1c1c; color: white; border-radius: 10px;">
-        <h3 style="color: #7CFFB2; margin: 0 0 15px 0; font-size: 18px;">Configuration Appliance</h3>
-        
-        <label style="font-weight: bold; font-size: 11px; color: #888;">ENTITÉ (sensor.lave_linge_job_state)</label>
-        <input id="entity-input" placeholder="sensor.votre_entite" value="${this._config.entity}"
-               style="width: 100%; padding: 12px; background: #000; color: #fff; border: 1px solid #444; border-radius: 8px; margin: 8px 0 15px; box-sizing: border-box; outline: none;">
-
-        <label style="font-weight: bold; font-size: 11px; color: #888;">NOM DE L'APPAREIL</label>
-        <input id="name-input" placeholder="Ex: Lave-Linge" value="${this._config.name}"
-               style="width: 100%; padding: 12px; background: #000; color: #fff; border: 1px solid #444; border-radius: 8px; margin: 8px 0 15px; box-sizing: border-box; outline: none;">
-
-        <div style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
-            <input type="checkbox" id="show-state" ${this._config.show_state ? 'checked' : ''} style="cursor: pointer;">
-            <label for="show-state" style="font-size: 13px; cursor: pointer;">Afficher l'état sous l'image</label>
+      <div style="padding: 15px; font-family: sans-serif; background: #1c1c1c; color: white; border-radius: 12px;">
+        <div style="display: flex; gap: 5px; margin-bottom: 20px;">
+          <button class="tab-btn" data-type="washing_machine" style="flex:1; padding:8px; cursor:pointer; background:${type === 'washing_machine' ? '#7CFFB2' : '#333'}; color:${type === 'washing_machine' ? '#000' : '#fff'}; border:none; border-radius:5px; font-weight:bold;">LINGE</button>
+          <button class="tab-btn" data-type="dishwasher" style="flex:1; padding:8px; cursor:pointer; background:${type === 'dishwasher' ? '#7CFFB2' : '#333'}; color:${type === 'dishwasher' ? '#000' : '#fff'}; border:none; border-radius:5px; font-weight:bold;">VAISSELLE</button>
+          <button class="tab-btn" data-type="fridge" style="flex:1; padding:8px; cursor:pointer; background:${type === 'fridge' ? '#7CFFB2' : '#333'}; color:${type === 'fridge' ? '#000' : '#fff'}; border:none; border-radius:5px; font-weight:bold;">FRIGO</button>
         </div>
+
+        <label style="font-weight: bold; font-size: 11px; color: #7CFFB2;">CAPTEUR D'ÉTAT (IMAGE)</label>
+        <input id="main-entity" placeholder="sensor.job_state" value="${this._config.entities[type] || ''}"
+               style="width: 100%; padding: 10px; background: #000; color: #fff; border: 1px solid #444; border-radius: 5px; margin: 8px 0 15px; box-sizing: border-box;">
+
+        <label style="font-weight: bold; font-size: 11px; color: #7CFFB2;">LISTE DES CAPTEURS (MAX 10)</label>
+        <div style="display: flex; gap: 5px; margin: 8px 0;">
+          <input id="new-sensor" placeholder="sensor.mesure" style="flex: 1; padding: 10px; background: #000; color: #fff; border: 1px solid #444; border-radius: 5px;">
+          <button id="add-sensor" style="background: #7CFFB2; border: none; padding: 0 15px; border-radius: 5px; cursor: pointer; font-weight: bold;">+</button>
+        </div>
+        <div id="sensor-list" style="display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px;"></div>
       </div>
     `;
 
-    const entityInput = this.querySelector('#entity-input');
-    const nameInput = this.querySelector('#name-input');
-    const showCheck = this.querySelector('#show-state');
-
-    // --- BLOQUAGE DU CURSEUR (Anti-jump) ---
-    const stop = (e) => e.stopPropagation();
-    [entityInput, nameInput].forEach(el => {
-        el.addEventListener('input', stop);
-        el.addEventListener('keydown', stop);
-        el.addEventListener('mousedown', stop);
+    // --- LOGIQUE ÉDITEUR ---
+    this.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.onclick = () => { this._config.appliance_type = btn.dataset.type; this._render(); this._save(); };
     });
 
-    entityInput.onchange = () => { this._config.entity = entityInput.value.trim(); this._save(); };
-    nameInput.onchange = () => { this._config.name = nameInput.value.trim(); this._save(); };
-    showCheck.onchange = () => { this._config.show_state = showCheck.checked; this._save(); };
+    const mainInput = this.querySelector('#main-entity');
+    mainInput.onchange = () => { this._config.entities[type] = mainInput.value.trim(); this._save(); };
+
+    this.querySelector('#add-sensor').onclick = () => {
+      const sInput = this.querySelector('#new-sensor');
+      if (sInput.value.includes('.') && this._config.sensors[type].length < 10) {
+        this._config.sensors[type].push(sInput.value.trim());
+        sInput.value = "";
+        this._renderSensors();
+        this._save();
+      }
+    };
+    this._renderSensors();
   }
 
-  _save() {
-    this.dispatchEvent(new CustomEvent("config-changed", {
-      detail: { config: this._config },
-      bubbles: true,
-      composed: true
-    }));
+  _renderSensors() {
+    const type = this._config.appliance_type;
+    const container = this.querySelector('#sensor-list');
+    container.innerHTML = (this._config.sensors[type] || []).map((s, i) => `
+      <div style="background: #333; padding: 5px 10px; border-radius: 15px; font-size: 10px; display:flex; align-items:center;">
+        ${s.split('.').pop()} <span class="del" data-i="${i}" style="color:#ff5252; cursor:pointer; margin-left:8px; font-weight:bold;">×</span>
+      </div>
+    `).join('');
+
+    container.querySelectorAll('.del').forEach(d => {
+      d.onclick = () => { this._config.sensors[type].splice(d.dataset.i, 1); this._renderSensors(); this._save(); };
+    });
   }
+
+  _save() { this.dispatchEvent(new CustomEvent("config-changed", { detail: { config: this._config }, bubbles: true, composed: true })); }
 }
 customElements.define("appliance-card-editor", ApplianceCardEditor);
 
-
 // ==========================
-// 🧺 LA CARTE (ANTI-SCINTILLEMENT)
+// 🧺 LA CARTE (FIX IMAGE & MULTI-SENSORS)
 // ==========================
 class ApplianceCard extends HTMLElement {
   static getConfigElement() { return document.createElement("appliance-card-editor"); }
   
-  setConfig(config) {
-    if (!config.entity) throw new Error("L'entité est obligatoire.");
-    this.config = config;
-  }
+  setConfig(config) { this.config = config; }
 
-  // Conversion des états vers les noms de tes fichiers GitHub
   normalizeState(state) {
     if (!state) return 'enveille';
     const s = state.toLowerCase();
     const map = {
-      'on': 'lavage', 'washing': 'lavage', 'running': 'lavage', 'lavage': 'lavage',
-      'filling': 'remplissage', 'remplissage': 'remplissage',
-      'rinsing': 'rincage', 'rincage': 'rincage',
-      'spinning': 'essorage', 'essorage': 'essorage',
-      'paused': 'pause', 'pause': 'pause',
-      'complete': 'findecycle', 'done': 'findecycle', 'end': 'findecycle', 'fin': 'findecycle',
-      'idle': 'enveille', 'off': 'enveille', 'en veille': 'enveille',
-      'error': 'erreur', 'fault': 'erreur', 'erreur': 'erreur'
+      'on':'lavage','washing':'lavage','running':'lavage',
+      'filling':'remplissage','rinsing':'rincage','spinning':'essorage',
+      'paused':'pause','pause':'pause','complete':'findecycle','done':'findecycle',
+      'idle':'enveille','off':'enveille','error':'erreur'
     };
     return map[s] || s;
   }
 
   set hass(hass) {
-    const entity = hass.states[this.config.entity];
-    if (!entity) return;
-
-    const state = this.normalizeState(entity.state);
-    const baseUrl = "https://raw.githubusercontent.com/xez7082/-dist-appliance-card.js/main/img/";
+    const type = this.config.appliance_type || 'washing_machine';
+    const mainEntity = (this.config.entities || {})[type];
+    const entityState = hass.states[mainEntity];
     
-    const colors = {
-      enveille: "#888", remplissage: "#3498db", lavage: "#2980b9",
-      rincage: "#1abc9c", essorage: "#9b59b6", findecycle: "#2ecc71",
-      pause: "#f39c12", erreur: "#e74c3c"
-    };
-    const color = colors[state] || "#7CFFB2";
-
-    // --- CONSTRUCTION INITIALE (UNE SEULE FOIS) ---
     if (!this._baseCard) {
       this.innerHTML = `
-        <ha-card style="border-radius:24px; overflow:hidden; text-align:center; background:#111; color:white; border:1px solid #333; transition: all 0.5s ease-in-out;">
-          <div style="padding:18px; background:rgba(255,255,255,0.03); border-bottom:1px solid #222;">
-            <h3 id="card-title" style="margin:0; font-size:16px; color:#7CFFB2; text-transform:uppercase; letter-spacing:1px;"></h3>
+        <ha-card style="border-radius:24px; overflow:hidden; background:#111; color:white; border:1px solid #333;">
+          <div id="header" style="padding:15px; text-align:center; background:rgba(255,255,255,0.03); color:#7CFFB2; font-weight:bold; text-transform:uppercase;"></div>
+          <div style="padding:20px; display:flex; align-items:center; justify-content:center; min-height:200px;">
+            <img id="main-img" style="width:80%; max-height:180px; object-fit:contain; transition: all 0.5s ease;">
           </div>
-          <div style="padding:25px; display:flex; align-items:center; justify-content:center; min-height:220px; position:relative;">
-            <img id="appliance-img" style="width:85%; max-height:200px; object-fit:contain; transition: filter 0.8s ease, transform 0.3s ease;">
-          </div>
-          <div id="state-box" style="padding:15px; font-weight:bold; text-transform:uppercase; font-size:13px; background:rgba(0,0,0,0.4); letter-spacing:2px; transition:color 0.5s ease;"></div>
-        </ha-card>
-      `;
+          <div id="state-text" style="text-align:center; padding:10px; font-weight:bold; letter-spacing:2px; background:rgba(0,0,0,0.3);"></div>
+          <div id="sensor-grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; padding:15px;"></div>
+        </ha-card>`;
       this._baseCard = this.querySelector('ha-card');
-      this._img = this.querySelector('#appliance-img');
-      this._stateBox = this.querySelector('#state-box');
-      this._title = this.querySelector('#card-title');
+      this._img = this.querySelector('#main-img');
+      this._stateBox = this.querySelector('#state-text');
+      this._grid = this.querySelector('#sensor-grid');
+      this._head = this.querySelector('#header');
     }
 
-    // --- MISE À JOUR CHIRURGICALE (Uniquement si l'état change) ---
-    if (this._lastState !== state) {
-      const newSrc = `${baseUrl}${state}.png`;
-      
-      // Préchargement pour éviter le flash blanc de l'image
-      const imgPreload = new Image();
-      imgPreload.src = newSrc;
-      imgPreload.onload = () => {
-          this._img.src = newSrc;
-      };
-
-      this._img.style.filter = `drop-shadow(0 0 12px ${color}55)`;
-      this._stateBox.style.color = color;
-      this._stateBox.textContent = state.replace('findecycle', 'FIN DE CYCLE').replace('enveille', 'EN VEILLE');
-      
-      // Effet de bordure néon si actif
-      this._baseCard.style.boxShadow = (state !== "enveille") ? `0 0 20px ${color}33` : "none";
-      this._baseCard.style.borderColor = (state !== "enveille") ? `${color}55` : "#333";
-      
-      this._lastState = state;
+    const state = entityState ? this.normalizeState(entityState.state) : 'enveille';
+    const baseUrl = "https://raw.githubusercontent.com/xez7082/-dist-appliance-card.js/main/img/";
+    
+    // --- MISE À JOUR IMAGE (SI CHANGEMENT) ---
+    const newSrc = `${baseUrl}${state}.png`;
+    if (this._lastImage !== newSrc) {
+        this._img.src = newSrc;
+        this._lastImage = newSrc;
     }
 
-    // Mise à jour constante des paramètres éditeur
-    if (this._title.textContent !== this.config.name) {
-        this._title.textContent = this.config.name;
-    }
-    this._stateBox.style.display = this.config.show_state ? 'block' : 'none';
+    // --- MISE À JOUR DESIGN ---
+    const colorMap = { enveille:"#888", lavage:"#2980b9", findecycle:"#2ecc71", erreur:"#e74c3c" };
+    const color = colorMap[state] || "#7CFFB2";
+    
+    this._head.textContent = (this.config.names || {})[type];
+    this._stateBox.textContent = state.toUpperCase();
+    this._stateBox.style.color = color;
+    this._baseCard.style.borderColor = `${color}44`;
+
+    // --- RENDU DES 10 SENSORS ---
+    const sensors = (this.config.sensors || {})[type] || [];
+    let html = "";
+    sensors.forEach(id => {
+      const s = hass.states[id];
+      if (s) {
+        html += `
+          <div style="background:#1a1a1a; padding:8px; border-radius:10px; border-left:3px solid ${color};">
+            <div style="font-size:9px; opacity:0.5; text-transform:uppercase; overflow:hidden; white-space:nowrap;">${id.split('.').pop().replace('_',' ')}</div>
+            <div style="font-weight:bold; font-size:12px;">${s.state} <span style="font-size:10px; opacity:0.7;">${s.attributes.unit_of_measurement || ''}</span></div>
+          </div>`;
+      }
+    });
+    this._grid.innerHTML = html;
   }
-
-  getCardSize() { return 4; }
 }
-
 customElements.define("appliance-card", ApplianceCard);
 
-// --- ENREGISTREMENT DANS HA ---
 window.customCards = window.customCards || [];
-window.customCards.push({
-  type: "appliance-card",
-  name: "Appliance Card Pro",
-  description: "Carte animée avec suivi d'état par images GitHub.",
-  preview: true
-});
+window.customCards.push({ type: "appliance-card", name: "Appliance Card Ultimate", preview: true });
