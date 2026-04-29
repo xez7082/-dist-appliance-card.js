@@ -165,6 +165,10 @@ class ApplianceCard extends HTMLElement {
       if (imgName === 'errour' || imgName === 'abandon') color = '#ff5252';
       if (imgName === 'pause' || imgName === 'actionrequise') color = '#ffa500';
 
+    } else if (type === 'fridge') {
+      const isOpen = ['on', 'open', 'ouvert', 'true'].includes(rawState);
+      imgName = isOpen ? 'porteouverte' : 'portefermee';
+      color = isOpen ? '#ff5252' : '#2ecc71';
     } else {
       imgName = 'inactif';
     }
@@ -220,11 +224,9 @@ class ApplianceCard extends HTMLElement {
     container.innerHTML = '';
     const sensors = (this._config.sensors && this._config.sensors[type]) || [];
 
-sensors.forEach(s => {
+    sensors.forEach(s => {
       const state = this._hass.states[s.entity];
       const div = document.createElement('div');
-      
-      // On ajoute un curseur pointeur si c'est un switch pour indiquer qu'on peut cliquer
       const isActionable = s.entity.startsWith('switch.') || s.entity.startsWith('light.') || s.entity.startsWith('input_boolean.');
       
       div.style.cssText = `
@@ -245,7 +247,6 @@ sensors.forEach(s => {
             ${state.state.toUpperCase()} ${state.attributes.unit_of_measurement || ''}
           </div>`;
           
-        // Si c'est un switch, on ajoute l'action de clic pour basculer (toggle)
         if (isActionable) {
           div.onclick = () => {
             this._hass.callService('homeassistant', 'toggle', { entity_id: s.entity });
@@ -258,7 +259,7 @@ sensors.forEach(s => {
       }
       container.appendChild(div);
     });
-  } // <--- C'est cette accolade qu'il fallait fermer ici !
+  }
 
   _switch(type) {
     this._type = type;
