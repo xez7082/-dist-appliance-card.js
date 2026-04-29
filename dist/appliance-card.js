@@ -56,11 +56,11 @@ class UltraApplianceCardEditor extends HTMLElement {
 
         <span class="label">Ajouter une entité</span>
         <div class="input-row">
-          <input type="text" id="sensor-field" placeholder="sensor.mon_entite" @click="${e => e.stopPropagation()}">
+          <input type="text" id="sensor-field" placeholder="sensor.mon_entite">
           <button class="add-btn" id="btn-append">OK</button>
         </div>
 
-        <div class="sensor-list" id="tag-container">
+        <div class="sensor-list">
           ${this._config.sensors.map((s, index) => `
             <div class="sensor-tag">
               <span>${s}</span>
@@ -71,20 +71,24 @@ class UltraApplianceCardEditor extends HTMLElement {
       </div>
     `;
 
-    // --- LOGIQUE DE CLIC ---
-    
-    // Boutons de type
+    // 🔒 Empêche fermeture de l’editor
+    const input = this.shadowRoot.getElementById('sensor-field');
+    input.addEventListener('mousedown', e => e.stopPropagation());
+    input.addEventListener('click', e => e.stopPropagation());
+
+    // Type
     this.shadowRoot.getElementById('type-wash').onclick = () => this._updateType('washing_machine');
     this.shadowRoot.getElementById('type-dish').onclick = () => this._updateType('dishwasher');
     this.shadowRoot.getElementById('type-fridge').onclick = () => this._updateType('fridge');
 
-    // Bouton ajouter
+    // Ajout
     this.shadowRoot.getElementById('btn-append').onclick = (e) => {
       e.stopPropagation();
-      const input = this.shadowRoot.getElementById('sensor-field');
       const val = input.value.trim();
+
       if (val && val.includes('.')) {
         this._config.sensors = [...this._config.sensors, val];
+        input.value = '';
         this.fireConfigChanged();
       }
     };
@@ -93,7 +97,7 @@ class UltraApplianceCardEditor extends HTMLElement {
     this.shadowRoot.querySelectorAll('.delete-btn').forEach(btn => {
       btn.onclick = (e) => {
         e.stopPropagation();
-        const idx = btn.dataset.index;
+        const idx = parseInt(btn.dataset.index);
         this._config.sensors.splice(idx, 1);
         this.fireConfigChanged();
       };
@@ -106,76 +110,14 @@ class UltraApplianceCardEditor extends HTMLElement {
   }
 
   fireConfigChanged() {
-    const event = new CustomEvent('config-changed', {
+    this.dispatchEvent(new CustomEvent('config-changed', {
       detail: { config: this._config },
       bubbles: true,
       composed: true
-    });
-    this.dispatchEvent(event);
-    this.render(); // On force le re-rendu local
+    }));
+
+    this.render();
   }
 }
+
 customElements.define("ultra-appliance-card-editor", UltraApplianceCardEditor);
-
-
-// --- CARTE PRINCIPALE ---
-class UltraApplianceCard extends HTMLElement {
-  static getConfigElement() { return document.createElement("ultra-appliance-card-editor"); }
-  static getStubConfig() { return { appliance_type: "washing_machine", sensors: [] }; }
-
-  setConfig(config) { this.config = config; }
-
-  set hass(hass) {
-    if (!this.config || !hass) return;
-
-    if (!this.content) {
-      this.innerHTML = `
-        <ha-card style="background: #111; border: 1px solid #7CFFB2; border-radius: 20px; padding: 20px; color: white;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-             <div id="icon-display" style="font-size: 32px; color: #7CFFB2;"></div>
-             <div id="viz"></div>
-          </div>
-          <div id="sensor-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;"></div>
-        </ha-card>
-      `;
-      this.content = this.querySelector("#sensor-grid");
-    }
-
-    const type = this.config.appliance_type || 'washing_machine';
-    const icons = { washing_machine: '🧺', dishwasher: '🍽️', fridge: '❄️' };
-    this.querySelector("#icon-display").textContent = icons[type];
-
-    const firstVal = parseFloat(hass.states[this.config.sensors[0]]?.state) || 0;
-    const level = 100 - (firstVal % 101);
-    this.querySelector("#viz").innerHTML = `
-      <svg viewBox="0 0 100 100" style="width:60px; height:60px; border-radius:50%; border: 2px solid #7CFFB2; background:#051515;">
-        <path d="M 0,${level} C 25,${level-5} 75,${level+5} 100,${level} L 100,100 L 0,100 Z" fill="#7CFFB2" opacity="0.4">
-          <animate attributeName="d" dur="3s" repeatCount="indefinite" values="M 0,${level} C 25,${level-5} 75,${level+5} 100,${level} L 100,100 L 0,100 Z; M 0,${level} C 25,${level+5} 75,${level-5} 100,${level} L 100,100 L 0,100 Z; M 0,${level} C 25,${level-5} 75,${level+5} 100,${level} L 100,100 L 0,100 Z" />
-        </path>
-      </svg>
-    `;
-
-    let html = '';
-    this.config.sensors.forEach(eid => {
-      const state = hass.states[eid];
-      if (state) {
-        html += `
-          <div style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 10px; border-left: 3px solid #7CFFB2;">
-            <div style="font-size: 9px; opacity: 0.6; text-transform: uppercase;">${state.attributes.friendly_name || eid.split('.')[1]}</div>
-            <div style="font-weight: bold;">${state.state}${state.attributes.unit_of_measurement || ''}</div>
-          </div>
-        `;
-      }
-    });
-    this.content.innerHTML = html;
-  }
-}
-customElements.define("ultra-appliance-card", UltraApplianceCard);
-
-window.customCards = window.customCards || [];
-window.customCards.push({
-  type: "ultra-appliance-card",
-  name: "Ultra Appliance Card",
-  description: "Boutons interactifs avec système d'ajout d'entités corrigé.",
-  preview: true,
-});
