@@ -1,24 +1,18 @@
 // --- 1. L'ÉDITEUR ---
 class ApplianceCardEditor extends HTMLElement {
   setConfig(config) {
-    // Initialisation forcée pour éviter l'erreur "undefined"
-    this._config = { 
-      appliance_type: 'washing_machine', 
-      sensors: [], 
-      ...config 
-    };
+    this._config = { appliance_type: 'washing_machine', sensors: [], ...config };
   }
 
   set hass(hass) {
     this._hass = hass;
     if (!this.shadowRoot) {
       this.attachShadow({ mode: "open" });
+      this.render();
     }
-    this.render();
   }
 
   render() {
-    // SÉCURITÉ CRUCIALE : Si pas de config, on n'affiche rien au lieu de planter
     if (!this._config) return;
 
     this.shadowRoot.innerHTML = `
@@ -28,6 +22,7 @@ class ApplianceCardEditor extends HTMLElement {
         select, input { 
           width: 100%; padding: 10px; background: #000; color: white; 
           border: 1px solid #444; border-radius: 8px; margin-bottom: 15px;
+          box-sizing: border-box;
         }
         .btn-add { 
           width: 100%; background: #7CFFB2; border: none; padding: 10px; 
@@ -48,11 +43,11 @@ class ApplianceCardEditor extends HTMLElement {
           <option value="fridge" ${this._config.appliance_type === 'fridge' ? 'selected' : ''}>Frigo</option>
         </select>
 
-        <label>Ajouter un Sensor (ex: sensor.power)</label>
-        <input id="sensor-input" type="text" placeholder="sensor.xxxx" spellcheck="false">
+        <label>Ajouter un Sensor</label>
+        <input id="sensor-input" type="text" placeholder="sensor.votre_entite" spellcheck="false">
         <button class="btn-add" id="add-btn">AJOUTER</button>
 
-        <div style="margin-top: 15px;">
+        <div id="list-container" style="margin-top: 15px;">
           ${(this._config.sensors || []).map((s, i) => `
             <div class="sensor-tag">
               ${s} <span class="del" data-index="${i}">×</span>
@@ -66,10 +61,11 @@ class ApplianceCardEditor extends HTMLElement {
     const select = this.shadowRoot.getElementById('type-select');
     const addBtn = this.shadowRoot.getElementById('add-btn');
 
-    // Bloquer les interférences pour garder le focus
-    const stop = (e) => e.stopPropagation();
-    input.onmousedown = stop;
-    input.onkeydown = stop;
+    // --- BLOQUER LE "BUBBLING" ---
+    // Ces lignes empêchent Home Assistant de savoir que tu tapes dedans
+    input.addEventListener('input', (e) => e.stopPropagation());
+    input.addEventListener('keydown', (e) => e.stopPropagation());
+    input.addEventListener('mousedown', (e) => e.stopPropagation());
 
     select.onchange = (e) => {
       this._config.appliance_type = e.target.value;
@@ -80,9 +76,11 @@ class ApplianceCardEditor extends HTMLElement {
       e.stopPropagation();
       const val = input.value.trim();
       if (val.includes('.')) {
+        // On met à jour la config SEULEMENT au clic
         this._config.sensors = [...(this._config.sensors || []), val];
-        input.value = "";
+        input.value = ""; 
         this._save();
+        this.render(); // On redessine manuellement la liste
       }
     };
 
@@ -91,6 +89,7 @@ class ApplianceCardEditor extends HTMLElement {
         e.stopPropagation();
         this._config.sensors.splice(btn.dataset.index, 1);
         this._save();
+        this.render();
       };
     });
   }
@@ -101,23 +100,20 @@ class ApplianceCardEditor extends HTMLElement {
       bubbles: true,
       composed: true
     }));
-    this.render(); // Rafraîchit l'éditeur après sauvegarde
   }
 }
 customElements.define("appliance-card-editor", ApplianceCardEditor);
 
-// --- 2. LA CARTE ---
+// --- 2. LA CARTE (Version Stable) ---
 class ApplianceCard extends HTMLElement {
   static getConfigElement() { return document.createElement("appliance-card-editor"); }
   static getStubConfig() { return { appliance_type: "washing_machine", sensors: [] }; }
 
   setConfig(config) {
-    if (!config) throw new Error("Config invalide");
     this.config = config;
   }
 
   set hass(hass) {
-    // SÉCURITÉ : Ne rien faire si config ou hass absent
     if (!this.config || !hass) return;
 
     if (!this.content) {
@@ -135,7 +131,7 @@ class ApplianceCard extends HTMLElement {
         sensorsHtml += `
           <div style="background:#222; padding:10px; border-radius:8px; border-left:3px solid #7CFFB2;">
             <div style="font-size:10px; opacity:0.6;">${id.split('.').pop()}</div>
-            <div style="font-weight:bold;">${s.state} ${s.attributes.unit_of_measurement || ''}</div>
+            <div style="font-weight:bold;">${s.state}</div>
           </div>`;
       }
     });
@@ -143,7 +139,7 @@ class ApplianceCard extends HTMLElement {
     this.content.innerHTML = `
       <div style="display:flex; align-items:center; gap:12px; margin-bottom:15px;">
         <span style="font-size:30px;">${icons[type] || '❓'}</span>
-        <span style="font-weight:bold; color:#7CFFB2;">${type.replace('_', ' ').toUpperCase()}</span>
+        <span style="font-weight:bold; color:#7CFFB2;">${type.toUpperCase()}</span>
       </div>
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
         ${sensorsHtml || '<div style="grid-column:span 2; opacity:0.3;">Aucun capteur</div>'}
@@ -153,10 +149,5 @@ class ApplianceCard extends HTMLElement {
 }
 customElements.define("appliance-card", ApplianceCard);
 
-// --- 3. ENREGISTREMENT ---
 window.customCards = window.customCards || [];
-window.customCards.push({
-  type: "appliance-card",
-  name: "Appliance Card Pro",
-  preview: true
-});
+window.customCards.push({ type: "appliance-card", name: "Appliance Card Pro", preview: true });
