@@ -1,0 +1,6 @@
+{
+  "name": "Appliance Card",
+  "render_as_panel": false,
+  "type": "lovelace",
+  "filename": "appliance-card.js"
+}
