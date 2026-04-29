@@ -1,17 +1,15 @@
-// --- ÉDITEUR VISUEL SÉCURISÉ ---
 class UltraApplianceCardEditor extends HTMLElement {
   setConfig(config) {
     this._config = { ...config };
     if (!this._config.sensors) this._config.sensors = [];
-    this._tempSensor = ""; // Variable pour stocker la saisie sans rafraîchir la carte
   }
 
   set hass(hass) {
     this._hass = hass;
     if (!this.shadowRoot) {
       this.attachShadow({ mode: 'open' });
+      this.render();
     }
-    this.render();
   }
 
   render() {
@@ -19,8 +17,8 @@ class UltraApplianceCardEditor extends HTMLElement {
 
     this.shadowRoot.innerHTML = `
       <style>
-        .container { font-family: sans-serif; color: white; padding: 10px; background: #1c1c1c; border-radius: 12px; }
-        .label { font-weight: bold; color: #7CFFB2; margin: 15px 0 8px 0; display: block; text-transform: uppercase; font-size: 11px; letter-spacing: 1px; }
+        .container { font-family: sans-serif; color: white; padding: 15px; background: #1c1c1c; border-radius: 12px; }
+        .label { font-weight: bold; color: #7CFFB2; margin: 15px 0 8px 0; display: block; text-transform: uppercase; font-size: 11px; }
         
         .type-selector { display: flex; gap: 8px; margin-bottom: 20px; }
         .btn-type { 
@@ -28,44 +26,41 @@ class UltraApplianceCardEditor extends HTMLElement {
           background: #222; color: #888; border-radius: 8px; text-align: center;
           transition: all 0.2s ease; font-size: 10px; font-weight: bold;
         }
-        .btn-type.active { border-color: #7CFFB2; color: #7CFFB2; background: rgba(124, 255, 178, 0.1); box-shadow: 0 0 8px rgba(124, 255, 178, 0.2); }
+        .btn-type.active { border-color: #7CFFB2; color: #7CFFB2; background: rgba(124, 255, 178, 0.1); }
 
-        .input-row { display: flex; gap: 8px; margin-bottom: 10px; }
+        .input-row { display: flex; gap: 8px; }
         input { 
           flex: 1; padding: 12px; background: #000; color: white; 
-          border: 1px solid #444; border-radius: 8px; outline: none; font-size: 13px;
+          border: 1px solid #444; border-radius: 8px; outline: none;
         }
-        input:focus { border-color: #7CFFB2; }
-        
         .add-btn { 
-          background: #7CFFB2; color: #111; border: none; padding: 0 20px; 
-          border-radius: 8px; cursor: pointer; font-weight: bold; transition: opacity 0.2s;
+          background: #7CFFB2; color: #111; border: none; padding: 0 15px; 
+          border-radius: 8px; cursor: pointer; font-weight: bold;
         }
-        .add-btn:active { opacity: 0.7; }
 
         .sensor-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 15px; }
         .sensor-tag { 
           background: #333; padding: 6px 12px; border-radius: 20px; 
           font-size: 11px; display: flex; align-items: center; gap: 8px; border: 1px solid #555;
         }
-        .delete-btn { color: #ff5252; cursor: pointer; font-size: 16px; line-height: 1; }
+        .delete-btn { color: #ff5252; cursor: pointer; font-size: 18px; line-height: 1; }
       </style>
 
       <div class="container">
-        <span class="label">Sélectionner l'appareil</span>
+        <span class="label">Type d'appareil</span>
         <div class="type-selector">
-          <div class="btn-type ${this._config.appliance_type === 'washing_machine' ? 'active' : ''}" data-type="washing_machine">LAVE-LINGE</div>
-          <div class="btn-type ${this._config.appliance_type === 'dishwasher' ? 'active' : ''}" data-type="dishwasher">VAISSELLE</div>
-          <div class="btn-type ${this._config.appliance_type === 'fridge' ? 'active' : ''}" data-type="fridge">FRIGO</div>
+          <div class="btn-type ${this._config.appliance_type === 'washing_machine' ? 'active' : ''}" id="type-wash">LAVE-LINGE</div>
+          <div class="btn-type ${this._config.appliance_type === 'dishwasher' ? 'active' : ''}" id="type-dish">VAISSELLE</div>
+          <div class="btn-type ${this._config.appliance_type === 'fridge' ? 'active' : ''}" id="type-fridge">FRIGO</div>
         </div>
 
-        <span class="label">Ajouter une entité sensor</span>
+        <span class="label">Ajouter une entité</span>
         <div class="input-row">
-          <input type="text" id="new-sensor" placeholder="ex: sensor.lave_linge_power" value="${this._tempSensor}">
-          <button class="add-btn" id="add-btn" type="button">AJOUTER</button>
+          <input type="text" id="sensor-field" placeholder="sensor.mon_entite" @click="${e => e.stopPropagation()}">
+          <button class="add-btn" id="btn-append">OK</button>
         </div>
 
-        <div class="sensor-list">
+        <div class="sensor-list" id="tag-container">
           ${this._config.sensors.map((s, index) => `
             <div class="sensor-tag">
               <span>${s}</span>
@@ -76,44 +71,38 @@ class UltraApplianceCardEditor extends HTMLElement {
       </div>
     `;
 
-    // --- GESTION DES ÉVÉNEMENTS ---
+    // --- LOGIQUE DE CLIC ---
+    
+    // Boutons de type
+    this.shadowRoot.getElementById('type-wash').onclick = () => this._updateType('washing_machine');
+    this.shadowRoot.getElementById('type-dish').onclick = () => this._updateType('dishwasher');
+    this.shadowRoot.getElementById('type-fridge').onclick = () => this._updateType('fridge');
 
-    const input = this.shadowRoot.querySelector('#new-sensor');
-
-    // On stocke la saisie localement sans déclencher "config-changed"
-    input.addEventListener('input', (ev) => {
-      this._tempSensor = ev.target.value;
-    });
-
-    // Clic sur AJOUTER
-    this.shadowRoot.querySelector('#add-btn').addEventListener('click', (ev) => {
-      ev.stopPropagation();
-      const val = this._tempSensor.trim();
+    // Bouton ajouter
+    this.shadowRoot.getElementById('btn-append').onclick = (e) => {
+      e.stopPropagation();
+      const input = this.shadowRoot.getElementById('sensor-field');
+      const val = input.value.trim();
       if (val && val.includes('.')) {
         this._config.sensors = [...this._config.sensors, val];
-        this._tempSensor = ""; // On vide après ajout
         this.fireConfigChanged();
       }
-    });
+    };
 
-    // Clic sur les types d'appareil
-    this.shadowRoot.querySelectorAll('.btn-type').forEach(btn => {
-      btn.addEventListener('click', (ev) => {
-        ev.stopPropagation();
-        this._config.appliance_type = btn.dataset.type;
-        this.fireConfigChanged();
-      });
-    });
-
-    // Clic sur supprimer
+    // Suppression
     this.shadowRoot.querySelectorAll('.delete-btn').forEach(btn => {
-      btn.addEventListener('click', (ev) => {
-        ev.stopPropagation();
+      btn.onclick = (e) => {
+        e.stopPropagation();
         const idx = btn.dataset.index;
         this._config.sensors.splice(idx, 1);
         this.fireConfigChanged();
-      });
+      };
     });
+  }
+
+  _updateType(type) {
+    this._config.appliance_type = type;
+    this.fireConfigChanged();
   }
 
   fireConfigChanged() {
@@ -123,12 +112,13 @@ class UltraApplianceCardEditor extends HTMLElement {
       composed: true
     });
     this.dispatchEvent(event);
+    this.render(); // On force le re-rendu local
   }
 }
 customElements.define("ultra-appliance-card-editor", UltraApplianceCardEditor);
 
 
-// --- LA CARTE PRINCIPALE ---
+// --- CARTE PRINCIPALE ---
 class UltraApplianceCard extends HTMLElement {
   static getConfigElement() { return document.createElement("ultra-appliance-card-editor"); }
   static getStubConfig() { return { appliance_type: "washing_machine", sensors: [] }; }
@@ -140,7 +130,7 @@ class UltraApplianceCard extends HTMLElement {
 
     if (!this.content) {
       this.innerHTML = `
-        <ha-card style="background: #111; border: 1px solid #7CFFB2; border-radius: 24px; padding: 20px; color: white;">
+        <ha-card style="background: #111; border: 1px solid #7CFFB2; border-radius: 20px; padding: 20px; color: white;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
              <div id="icon-display" style="font-size: 32px; color: #7CFFB2;"></div>
              <div id="viz"></div>
@@ -155,7 +145,6 @@ class UltraApplianceCard extends HTMLElement {
     const icons = { washing_machine: '🧺', dishwasher: '🍽️', fridge: '❄️' };
     this.querySelector("#icon-display").textContent = icons[type];
 
-    // Animation Hublot
     const firstVal = parseFloat(hass.states[this.config.sensors[0]]?.state) || 0;
     const level = 100 - (firstVal % 101);
     this.querySelector("#viz").innerHTML = `
@@ -171,9 +160,9 @@ class UltraApplianceCard extends HTMLElement {
       const state = hass.states[eid];
       if (state) {
         html += `
-          <div style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 12px; border-left: 3px solid #7CFFB2;">
-            <div style="font-size: 9px; opacity: 0.6; text-transform: uppercase; letter-spacing: 0.5px;">${state.attributes.friendly_name || eid.split('.')[1]}</div>
-            <div style="font-weight: bold; font-size: 14px;">${state.state}${state.attributes.unit_of_measurement || ''}</div>
+          <div style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 10px; border-left: 3px solid #7CFFB2;">
+            <div style="font-size: 9px; opacity: 0.6; text-transform: uppercase;">${state.attributes.friendly_name || eid.split('.')[1]}</div>
+            <div style="font-weight: bold;">${state.state}${state.attributes.unit_of_measurement || ''}</div>
           </div>
         `;
       }
@@ -186,7 +175,7 @@ customElements.define("ultra-appliance-card", UltraApplianceCard);
 window.customCards = window.customCards || [];
 window.customCards.push({
   type: "ultra-appliance-card",
-  name: "Ultra Appliance Card (Fix)",
+  name: "Ultra Appliance Card",
   description: "Boutons interactifs avec système d'ajout d'entités corrigé.",
   preview: true,
 });
