@@ -1,155 +1,151 @@
 class ApplianceCardEditor extends HTMLElement {
   setConfig(config) {
     this._config = config;
+  }
+
+  set hass(hass) {
+    this._hass = hass;
     this._render();
   }
 
   _render() {
-    if (!this._config) return;
-    const type = this._config.appliance_type || 'washing_machine';
-    
+    if (!this._config || this._rendered) return;
+    this._rendered = true;
+
     this.innerHTML = `
-      <div style="padding: 10px; color: white; background: #222; font-family: sans-serif;">
-        <div style="font-weight:bold; color:#7CFFB2; border-bottom:1px solid #444; padding-bottom:5px; margin-bottom:10px;">
-          MODE : ${type.toUpperCase()}
+      <div style="padding: 10px; font-family: sans-serif;">
+        <div style="margin-bottom: 15px;">
+          <label style="font-weight: bold; display: block; margin-bottom: 5px;">Entité Principale (État)</label>
+          <input id="main-ent" type="text" style="width: 100%; padding: 8px; box-sizing: border-box;" 
+                 value="${this._config.entity || ''}" placeholder="sensor.lave_linge_cycle">
         </div>
-        
-        <label>Entité État (sensor...) :</label><br>
-        <input id="ent_input" style="width:100%; padding:8px; margin:5px 0;" value="${this._config.entities ? (this._config.entities[type] || '') : ''}">
-        
-        <p style="margin-top:15px;">Ajouter un Sensor de mesure :</p>
-        <input id="sens_input" style="width:70%; padding:8px;" placeholder="sensor.puissance">
-        <button id="add_btn" style="width:25%; padding:8px; background:#7CFFB2; border:none; font-weight:bold;">AJOUTER</button>
-        
-        <div id="list" style="margin-top:10px;"></div>
+
+        <div style="margin-bottom: 15px;">
+          <label style="font-weight: bold; display: block; margin-bottom: 5px;">Ajouter un capteur (Mesures)</label>
+          <div style="display: flex; gap: 5px;">
+            <input id="new-sensor" type="text" style="flex: 1; padding: 8px;" placeholder="sensor.puissance">
+            <button id="add-btn" style="padding: 8px; cursor: pointer; background: #7CFFB2; border: none; font-weight: bold;">+</button>
+          </div>
+        </div>
+
+        <div id="sensor-list" style="display: flex; flex-direction: column; gap: 5px;">
+          ${(this._config.sensors || []).map((s, i) => `
+            <div style="display: flex; justify-content: space-between; background: #eee; padding: 5px 10px; border-radius: 4px; color: #000; align-items: center;">
+              <span style="font-size: 12px;">${s}</span>
+              <button class="remove-btn" data-index="${i}" style="background: #ff5252; color: white; border: none; border-radius: 3px; cursor: pointer; padding: 2px 6px;">X</button>
+            </div>
+          `).join('')}
+        </div>
       </div>
     `;
 
-    const entInp = this.querySelector('#ent_input');
-    const sensInp = this.querySelector('#sens_input');
-    const addBtn = this.querySelector('#add_btn');
-
-    // Empêche HA de voler le focus
-    [entInp, sensInp].forEach(i => {
-      i.addEventListener('keydown', e => e.stopPropagation());
+    // Événement Entité Principale
+    this.querySelector('#main-ent').addEventListener('change', (ev) => {
+      this._updateConfig({ entity: ev.target.value });
     });
 
-    entInp.onchange = () => {
-      const newConfig = JSON.parse(JSON.stringify(this._config));
-      if (!newConfig.entities) newConfig.entities = {};
-      newConfig.entities[type] = entInp.value;
-      this._dispatch(newConfig);
-    };
-
-    addBtn.onclick = () => {
-      const val = sensInp.value.trim();
-      if (val.includes('.')) {
-        const newConfig = JSON.parse(JSON.stringify(this._config));
-        if (!newConfig.sensors) newConfig.sensors = { washing_machine: [], dishwasher: [], fridge: [] };
-        if (!newConfig.sensors[type]) newConfig.sensors[type] = [];
-        newConfig.sensors[type].push(val);
-        this._dispatch(newConfig);
-        sensInp.value = "";
+    // Événement Ajouter Sensor
+    this.querySelector('#add-btn').addEventListener('click', () => {
+      const input = this.querySelector('#new-sensor');
+      const value = input.value.trim();
+      if (value) {
+        const sensors = [...(this._config.sensors || [])];
+        sensors.push(value);
+        this._updateConfig({ sensors: sensors });
+        input.value = '';
       }
-    };
-
-    const list = this.querySelector('#list');
-    const sensors = (this._config.sensors && this._config.sensors[type]) ? this._config.sensors[type] : [];
-    sensors.forEach((s, i) => {
-      const div = document.createElement('div');
-      div.style = "background:#333; padding:5px; margin:2px 0; display:flex; justify-content:space-between; font-size:11px;";
-      div.innerHTML = `<span>${s}</span><span style="color:red; cursor:pointer;">[X]</span>`;
-      div.querySelector('span:last-child').onclick = () => {
-        const newConfig = JSON.parse(JSON.stringify(this._config));
-        newConfig.sensors[type].splice(i, 1);
-        this._dispatch(newConfig);
-      };
-      list.appendChild(div);
     });
+
+    // Événement Supprimer Sensor
+    this.querySelectorAll('.remove-btn').forEach(btn => {
+      btn.addEventListener('click', (ev) => {
+        const index = parseInt(ev.target.dataset.index);
+        const sensors = [...(this._config.sensors || [])];
+        sensors.splice(index, 1);
+        this._updateConfig({ sensors: sensors });
+      });
+    });
+    
+    this._rendered = false; // Permet de re-render après update
   }
 
-  _dispatch(config) {
-    this._config = config;
-    this.dispatchEvent(new CustomEvent("config-changed", { detail: { config: config }, bubbles: true, composed: true }));
-    this._render();
+  _updateConfig(newValues) {
+    this._config = { ...this._config, ...newValues };
+    this.dispatchEvent(new CustomEvent("config-changed", {
+      detail: { config: this._config },
+      bubbles: true,
+      composed: true
+    }));
   }
 }
+
 customElements.define("appliance-card-editor", ApplianceCardEditor);
 
 class ApplianceCard extends HTMLElement {
-  static getConfigElement() { return document.createElement("appliance-card-editor"); }
-  
+  static getConfigElement() {
+    return document.createElement("appliance-card-editor");
+  }
+
+  static getStubConfig() {
+    return { entity: "", sensors: [] };
+  }
+
   setConfig(config) {
     this._config = config;
   }
 
   set hass(hass) {
-    if (!this._config || !hass) return;
-    const type = this._config.appliance_type || 'washing_machine';
-    const mainEnt = (this._config.entities || {})[type];
-    const stateObj = hass.states[mainEnt];
-    
+    const entityId = this._config.entity;
+    const stateObj = hass.states[entityId];
+    const state = stateObj ? stateObj.state.toLowerCase() : 'enveille';
+
+    // Nettoyage de l'état pour l'image
+    const map = {
+      'wash': 'lavage', 'ai_wash': 'lavage', 'pre_wash': 'lavage', 'weight_sensing': 'lavage',
+      'rinse': 'rincage', 'spin': 'essorage', 'finish': 'findecycle', 'none': 'enveille'
+    };
+    const imgName = map[state] || state;
+    const url = `https://cdn.statically.io/gh/xez7082/-dist-appliance-card.js/main/img/${imgName}.png`;
+
     if (!this._base) {
       this.innerHTML = `
-        <ha-card style="padding:15px; background:#111; color:white; border-radius:15px; border:1px solid #333;">
-          <div style="display:flex; gap:5px; margin-bottom:15px;">
-             <button id="l_btn" style="flex:1; padding:10px; border:none; border-radius:5px; cursor:pointer; font-weight:bold;">LINGE</button>
-             <button id="v_btn" style="flex:1; padding:10px; border:none; border-radius:5px; cursor:pointer; font-weight:bold;">VAISSELLE</button>
-             <button id="f_btn" style="flex:1; padding:10px; border:none; border-radius:5px; cursor:pointer; font-weight:bold;">FRIGO</button>
-          </div>
-          <div style="display: flex; align-items: center; gap: 15px;">
+        <ha-card style="padding: 16px; background: #111; color: white; border-radius: 12px; border: 1px solid #333;">
+          <div style="display: flex; align-items: center; gap: 20px;">
             <div style="flex: 1.2; text-align: center;">
-              <img id="main_img" style="width:100%; height:140px; object-fit:contain;">
-              <div id="state_txt" style="font-weight:bold; font-size:12px; margin-top:8px;"></div>
+              <img id="main-img" style="width: 100%; height: 150px; object-fit: contain;">
+              <div id="state-text" style="font-weight: bold; margin-top: 10px; color: #7CFFB2; text-transform: uppercase;"></div>
             </div>
-            <div id="sensor_box" style="flex: 1; display: flex; flex-direction: column; gap: 8px;"></div>
+            <div id="sensor-container" style="flex: 1; display: flex; flex-direction: column; gap: 8px;"></div>
           </div>
-        </ha-card>`;
+        </ha-card>
+      `;
       this._base = this.querySelector('ha-card');
-      
-      this.querySelector('#l_btn').onclick = () => this._switch('washing_machine');
-      this.querySelector('#v_btn').onclick = () => this._switch('dishwasher');
-      this.querySelector('#f_btn').onclick = () => this._switch('fridge');
     }
 
-    // Styles Boutons
-    const btns = { washing_machine: '#l_btn', dishwasher: '#v_btn', fridge: '#f_btn' };
-    Object.keys(btns).forEach(k => {
-      const b = this.querySelector(btns[k]);
-      b.style.background = (type === k) ? '#7CFFB2' : '#333';
-      b.style.color = (type === k) ? '#000' : '#fff';
-    });
-
-    const rawState = stateObj ? stateObj.state : 'none';
-    const cleanState = rawState.toLowerCase().replace('ai_', '').replace('_sensing', '');
+    const img = this.querySelector('#main-img');
+    img.src = url;
+    img.onerror = () => img.src = "https://cdn.statically.io/gh/xez7082/-dist-appliance-card.js/main/img/enveille.png";
     
-    const img = this.querySelector('#main_img');
-    img.src = `https://cdn.statically.io/gh/xez7082/-dist-appliance-card.js/main/img/${cleanState}.png`;
-    img.onerror = () => { img.src = "https://cdn.statically.io/gh/xez7082/-dist-appliance-card.js/main/img/enveille.png"; };
+    this.querySelector('#state-text').textContent = stateObj ? stateObj.state : 'Inconnu';
 
-    this.querySelector('#state_txt').textContent = rawState.toUpperCase();
-    this.querySelector('#state_txt').style.color = "#7CFFB2";
-
-    // Affichage des capteurs
-    const sensorList = (this._config.sensors && this._config.sensors[type]) ? this._config.sensors[type] : [];
-    let html = "";
-    sensorList.forEach(sid => {
-      const s = hass.states[sid];
-      if (s) {
-        html += `
-          <div style="background:rgba(255,255,255,0.05); padding:8px; border-radius:8px; border-left:4px solid #7CFFB2;">
-            <div style="font-size:9px; opacity:0.6; text-transform:uppercase;">${sid.split('.').pop()}</div>
-            <div style="font-size:12px; font-weight:bold;">${s.state} ${s.attributes.unit_of_measurement || ''}</div>
-          </div>`;
-      }
-    });
-    this.querySelector('#sensor_box').innerHTML = html;
-  }
-
-  _switch(t) {
-    const newConfig = JSON.parse(JSON.stringify(this._config));
-    newConfig.appliance_type = t;
-    this.dispatchEvent(new CustomEvent("config-changed", { detail: { config: newConfig }, bubbles: true, composed: true }));
+    const container = this.querySelector('#sensor-container');
+    container.innerHTML = '';
+    
+    if (this._config.sensors) {
+      this._config.sensors.forEach(sid => {
+        const s = hass.states[sid];
+        if (s) {
+          const div = document.createElement('div');
+          div.style = "background: rgba(255,255,255,0.05); padding: 8px; border-radius: 6px; border-left: 3px solid #7CFFB2;";
+          div.innerHTML = `
+            <div style="font-size: 9px; opacity: 0.6; text-transform: uppercase;">${sid.split('.').pop()}</div>
+            <div style="font-size: 12px; font-weight: bold;">${s.state} ${s.attributes.unit_of_measurement || ''}</div>
+          `;
+          container.appendChild(div);
+        }
+      });
+    }
   }
 }
+
 customElements.define("appliance-card", ApplianceCard);
