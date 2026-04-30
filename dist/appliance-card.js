@@ -28,14 +28,13 @@ class ApplianceCardEditor extends HTMLElement {
         <label style="font-weight: bold; color: #7CFFB2; font-size: 11px;">ENTITÉ D'ÉTAT PRINCIPALE</label>
         <input id="main-ent" type="text"
                style="width:100%; padding:10px; margin:8px 0; background:#000; color:#fff; border:1px solid #444; box-sizing:border-box;"
-               value="${(this._config.entities && this._config.entities[type]) || ''}"
-               placeholder="Ex: binary_sensor.porte_frigo">
+               value="${(this._config.entities && this._config.entities[type]) || ''}">
 
-        <label style="font-weight: bold; color: #7CFFB2; font-size: 11px;">AJOUTER UN CAPTEUR OU SWITCH</label>
+        <label style="font-weight: bold; color: #7CFFB2; font-size: 11px;">AJOUTER UN CAPTEUR / SWITCH</label>
         <div style="display: flex; gap: 5px; margin-top:8px;">
           <input id="new-sensor" type="text"
                  style="flex: 1; padding: 10px; background:#000; color:#fff; border:1px solid #444;"
-                 placeholder="Ex: switch.lave_linge">
+                 placeholder="Ex: sensor.consommation">
           <button id="add-btn" style="padding: 0 15px; background: #7CFFB2; border: none; font-weight: bold; cursor:pointer;">+</button>
         </div>
 
@@ -58,7 +57,6 @@ class ApplianceCardEditor extends HTMLElement {
       </div>
     `;
 
-    // Events de l'éditeur
     this.querySelectorAll('input').forEach(input => {
       input.addEventListener('focus', () => { this._blockRender = true; });
       input.addEventListener('blur',  () => { this._blockRender = false; });
@@ -142,15 +140,17 @@ class ApplianceCard extends HTMLElement {
     const entities = this._config.entities || {};
     const mainEnt = entities[type];
     const stateObj = this._hass.states[mainEnt];
-    const rawState = stateObj ? stateObj.state.toLowerCase() : 'off';
+    
+    // Normalisation agressive de l'état
+    const rawState = stateObj ? stateObj.state.toLowerCase().trim() : 'off';
 
-    let imgName = '';
+    let imgName = 'inactif';
     let color = '#7CFFB2'; 
 
     // --- LOGIQUE LAVE-LINGE ---
     if (type === 'washing_machine') {
       const washingMap = {
-        'wash': 'lavage', 'rinse': 'rincage', 'spin': 'essorage',
+        'wash': 'lavage', 'washing': 'lavage', 'rinse': 'rincage', 'spin': 'essorage',
         'finish': 'findecycle', 'off': 'enveille', 'none': 'enveille', 'on': 'lavage'
       };
       imgName = washingMap[rawState] || rawState.replace(/^ai_/, '');
@@ -159,35 +159,40 @@ class ApplianceCard extends HTMLElement {
 
     // --- LOGIQUE LAVE-VAISSELLE ---
     } else if (type === 'dishwasher') {
-      const dishwasherMap = {
-        'running': 'enmarche', 'on': 'enmarche', 'off': 'inactif',
-        'idle': 'inactif', 'paused': 'pause', 'ready': 'pret',
-        'completed': 'terminer', 'finished': 'terminer', 'error': 'errour'
-      };
-      imgName = dishwasherMap[rawState] || 'inactif';
-      if (['enmarche', 'terminer', 'pret'].includes(imgName)) color = '#2ecc71';
-      if (imgName === 'errour') color = '#ff5252';
+      // Mapping étendu pour couvrir plus de marques
+      if (['running', 'on', 'en_cours', 'marche', 'active', 'washing'].includes(rawState)) {
+        imgName = 'enmarche';
+        color = '#2ecc71';
+      } else if (['completed', 'finished', 'terminé', 'fin'].includes(rawState)) {
+        imgName = 'terminer';
+        color = '#2ecc71';
+      } else if (['ready', 'pret', 'prêt'].includes(rawState)) {
+        imgName = 'pret';
+        color = '#2ecc71';
+      } else if (['error', 'erreur', 'fault'].includes(rawState)) {
+        imgName = 'errour';
+        color = '#ff5252';
+      } else {
+        imgName = 'inactif';
+        color = '#7CFFB2';
+      }
 
     // --- LOGIQUE FRIGO (PORTE) ---
     } else if (type === 'fridge') {
-      const isOpen = ['on', 'open', 'ouvert', 'true'].includes(rawState);
+      const isOpen = ['on', 'open', 'ouvert', 'true', 'opened'].includes(rawState);
       imgName = isOpen ? 'porteouverte' : 'portefermee';
       color = isOpen ? '#ff5252' : '#2ecc71';
-
-    } else {
-      imgName = 'inactif';
     }
 
-    const imgUrl = `https://cdn.statically.io/gh/xez7082/-dist-appliance-card.js/main/img/${imgName}.png`;
+    const imgUrl = `https://cdn.statically.io/gh/xez7082/-dist-appliance-card.js/main/img/${imgName}.png?v=${Date.now()}`;
 
-    // Rendu de la base (si pas déjà fait)
     if (!this._base) {
       this.innerHTML = `
         <ha-card style="padding: 15px; background: #111; color: white; border-radius: 15px; border: 1px solid #333;">
           <div style="display: flex; gap: 5px; margin-bottom: 15px;">
-            <button id="btn-washing_machine" data-type="washing_machine" style="flex:1; padding:6px; font-size:10px; border-radius:4px; border:none; cursor:pointer; font-weight:bold;">LINGE</button>
-            <button id="btn-dishwasher" data-type="dishwasher" style="flex:1; padding:6px; font-size:10px; border-radius:4px; border:none; cursor:pointer; font-weight:bold;">VAISSELLE</button>
-            <button id="btn-fridge" data-type="fridge" style="flex:1; padding:6px; font-size:10px; border-radius:4px; border:none; cursor:pointer; font-weight:bold;">FRIGO</button>
+            <button class="nav-btn" data-type="washing_machine">LINGE</button>
+            <button class="nav-btn" data-type="dishwasher">VAISSELLE</button>
+            <button class="nav-btn" data-type="fridge">FRIGO</button>
           </div>
           <div style="display: flex; align-items: center; gap: 15px;">
             <div style="flex: 1.2; text-align: center;">
@@ -196,66 +201,51 @@ class ApplianceCard extends HTMLElement {
             </div>
             <div id="sensor-container" style="flex: 1; display: flex; flex-direction: column; gap: 8px;"></div>
           </div>
+          <style>
+            .nav-btn { flex:1; padding:6px; font-size:10px; border-radius:4px; border:none; cursor:pointer; font-weight:bold; transition: 0.3s; }
+          </style>
         </ha-card>`;
       this._base = this.querySelector('ha-card');
-      
-      this.querySelectorAll('[data-type]').forEach(btn => {
-        btn.onclick = (e) => {
-          e.stopPropagation();
-          this._switch(btn.dataset.type);
-        };
+      this.querySelectorAll('.nav-btn').forEach(btn => {
+        btn.onclick = () => this._switch(btn.dataset.type);
       });
     }
 
-    // Mise à jour visuelle des boutons
-    this.querySelectorAll('[data-type]').forEach(btn => {
+    this.querySelectorAll('.nav-btn').forEach(btn => {
       const active = btn.dataset.type === type;
       btn.style.background = active ? '#7CFFB2' : '#444';
       btn.style.color = active ? '#000' : '#fff';
     });
 
-    // Mise à jour Image et Texte d'état
     const img = this.querySelector('#main-img');
     img.src = imgUrl;
-    img.onerror = () => { img.src = 'https://cdn.statically.io/gh/xez7082/-dist-appliance-card.js/main/img/enveille.png'; };
+    img.onerror = () => { img.src = 'https://cdn.statically.io/gh/xez7082/-dist-appliance-card.js/main/img/inactif.png'; };
 
     const stateText = this.querySelector('#state-text');
-    stateText.textContent = stateObj ? stateObj.state : 'OFF';
+    stateText.textContent = stateObj ? stateObj.state : 'DÉCONNECTÉ';
     stateText.style.color = color;
 
-    // Mise à jour des capteurs secondaires
     const container = this.querySelector('#sensor-container');
     container.innerHTML = '';
     const sensors = (this._config.sensors && this._config.sensors[type]) || [];
 
     sensors.forEach(s => {
-      const state = this._hass.states[s.entity];
-      const div = document.createElement('div');
-      const isActionable = s.entity.startsWith('switch.') || s.entity.startsWith('light.') || s.entity.startsWith('input_boolean.');
+      const sState = this._hass.states[s.entity];
+      if (!sState) return;
       
-      div.style.cssText = `
-        background: rgba(255,255,255,0.05); padding: 8px; border-radius: 6px; 
-        border-left: 3px solid ${state ? color : '#ff5252'}; 
-        cursor: ${isActionable ? 'pointer' : 'default'};
-      `;
+      const div = document.createElement('div');
+      const isActionable = s.entity.startsWith('switch.') || s.entity.startsWith('light.');
+      
+      div.style.cssText = `background: rgba(255,255,255,0.05); padding: 8px; border-radius: 6px; border-left: 3px solid ${color}; cursor: ${isActionable ? 'pointer' : 'default'};`;
       
       const title = s.name || s.entity.split('.').pop().replace(/_/g, ' ');
+      div.innerHTML = `
+        <div style="font-size: 8px; opacity: 0.6; text-transform: uppercase;">${title}</div>
+        <div style="font-size: 11px; font-weight: bold;">${sState.state.toUpperCase()} ${sState.attributes.unit_of_measurement || ''}</div>
+      `;
       
-      if (state) {
-        div.innerHTML = `
-          <div style="font-size: 8px; opacity: 0.6; text-transform: uppercase;">${title}</div>
-          <div style="font-size: 11px; font-weight: bold;">
-            ${state.state.toUpperCase()} ${state.attributes.unit_of_measurement || ''}
-          </div>`;
-          
-        if (isActionable) {
-          div.onclick = (e) => {
-            e.stopPropagation();
-            this._hass.callService('homeassistant', 'toggle', { entity_id: s.entity });
-          };
-        }
-      } else {
-        div.innerHTML = `<div style="font-size: 8px; color: #ff5252;">ENTITÉ INTROUVABLE</div>`;
+      if (isActionable) {
+        div.onclick = () => this._hass.callService('homeassistant', 'toggle', { entity_id: s.entity });
       }
       container.appendChild(div);
     });
@@ -266,5 +256,4 @@ class ApplianceCard extends HTMLElement {
     this._update();
   }
 }
-
 customElements.define('appliance-card', ApplianceCard);
