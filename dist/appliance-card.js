@@ -25,47 +25,56 @@ class ApplianceCardEditor extends HTMLElement {
           <button class="type-btn" data-type="fridge" style="flex:1; padding:8px; cursor:pointer; background:${type === 'fridge' ? '#7CFFB2' : '#444'}; color:${type === 'fridge' ? '#000' : '#fff'}; border:none; border-radius:4px;">FRIGO</button>
         </div>
 
-        <label style="font-weight: bold; color: #7CFFB2; font-size: 11px;">ENTITÉ D'ÉTAT (BOSCH)</label>
+        <label style="font-weight: bold; color: #7CFFB2; font-size: 11px;">ENTITÉ PRINCIPALE</label>
         <input id="main-ent" type="text"
                style="width:100%; padding:10px; margin:8px 0; background:#000; color:#fff; border:1px solid #444; box-sizing:border-box;"
-               value="${(this._config.entities && this._config.entities[type]) || ''}"
-               placeholder="Ex: sensor.lave_vaisselle_operation_state">
+               value="${(this._config.entities && this._config.entities[type]) || ''}">
 
-        <label style="font-weight: bold; color: #7CFFB2; font-size: 11px;">CAPTEURS SECONDAIRES</label>
+        <label style="font-weight: bold; color: #7CFFB2; font-size: 11px;">AJOUTER UN CAPTEUR</label>
         <div style="display: flex; gap: 5px; margin-top:8px;">
           <input id="new-sensor" type="text"
                  style="flex: 1; padding: 10px; background:#000; color:#fff; border:1px solid #444;"
-                 placeholder="Ex: sensor.lave_vaisselle_remaining_time">
+                 placeholder="sensor.energie">
           <button id="add-btn" style="padding: 0 15px; background: #7CFFB2; border: none; font-weight: bold; cursor:pointer;">+</button>
         </div>
 
-        <div id="sensor-list" style="margin-top: 15px; display: flex; flex-direction: column; gap: 8px;">
+        <div id="sensor-list" style="margin-top: 15px; display: flex; flex-direction: column; gap: 10px;">
           ${((this._config.sensors && this._config.sensors[type]) || []).map((s, i) => `
-            <div style="background: #333; padding: 8px; border-radius: 4px; border: 1px solid #444;">
-              <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
-                <span style="font-size: 10px; color:#aaa;">${s.entity}</span>
+            <div style="background: #333; padding: 10px; border-radius: 6px; border: 1px solid #444;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                <span style="font-size: 9px; color:#aaa; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:150px;">${s.entity}</span>
                 <button class="remove-btn" data-index="${i}"
-                        style="background:none; color:#ff5252; border:none; cursor:pointer; font-weight:bold;">X</button>
+                        style="background:#ff5252; color:white; border:none; border-radius:3px; padding:2px 8px; cursor:pointer; font-size:10px;">Supprimer</button>
               </div>
               <input class="name-edit" data-index="${i}" type="text"
-                     style="width:100%; background:#222; color:#fff; border:1px solid #555; padding:5px; font-size:11px;"
-                     value="${s.name || ''}" placeholder="Nom personnalisé">
+                     style="width:100%; background:#222; color:#fff; border:1px solid #555; padding:8px; font-size:12px; box-sizing:border-box;"
+                     value="${s.name || ''}" placeholder="Nom à afficher (Label)">
             </div>
           `).join('')}
         </div>
       </div>
     `;
 
+    // Événements pour bloquer le rendu pendant l'édition
+    this.querySelectorAll('input').forEach(input => {
+      input.addEventListener('focus', () => { this._blockRender = true; });
+      input.addEventListener('blur',  () => { this._blockRender = false; });
+      input.addEventListener('keydown', (e) => e.stopPropagation());
+    });
+
+    // Changer le type d'appareil
     this.querySelectorAll('.type-btn').forEach(btn => {
       btn.onclick = () => this._updateConfig({ appliance_type: btn.dataset.type });
     });
 
+    // Entité principale
     this.querySelector('#main-ent').onchange = (ev) => {
       const entities = { ...(this._config.entities || {}) };
       entities[type] = ev.target.value;
       this._updateConfig({ entities });
     };
 
+    // Ajouter un capteur
     this.querySelector('#add-btn').onclick = () => {
       const input = this.querySelector('#new-sensor');
       if (input.value.trim()) {
@@ -76,6 +85,24 @@ class ApplianceCardEditor extends HTMLElement {
       }
     };
 
+    // VALIDATION DU LABEL (NAME) - Utilisation de 'blur' pour être sûr de valider en quittant le champ
+    this.querySelectorAll('.name-edit').forEach(input => {
+      input.onblur = (ev) => {
+        const idx = parseInt(ev.target.dataset.index);
+        const allSensors = JSON.parse(JSON.stringify(this._config.sensors || {}));
+        if(!allSensors[type]) allSensors[type] = [];
+        allSensors[type][idx].name = ev.target.value;
+        this._updateConfig({ sensors: allSensors });
+      };
+      // Permet de valider aussi avec la touche "Entrée"
+      input.onkeypress = (ev) => {
+        if (ev.key === 'Enter') {
+          ev.target.blur();
+        }
+      };
+    });
+
+    // Supprimer un capteur
     this.querySelectorAll('.remove-btn').forEach(btn => {
       btn.onclick = () => {
         const index = parseInt(btn.dataset.index);
@@ -89,7 +116,11 @@ class ApplianceCardEditor extends HTMLElement {
   _updateConfig(newValues) {
     this._config = { ...this._config, ...newValues };
     this._rendered = false;
-    this.dispatchEvent(new CustomEvent('config-changed', { detail: { config: this._config }, bubbles: true, composed: true }));
+    this.dispatchEvent(new CustomEvent('config-changed', {
+      detail: { config: this._config },
+      bubbles: true,
+      composed: true,
+    }));
   }
 }
 customElements.define('appliance-card-editor', ApplianceCardEditor);
@@ -119,34 +150,34 @@ class ApplianceCard extends HTMLElement {
     const mainEnt = entities[type];
     const stateObj = this._hass.states[mainEnt];
     
+    // Normalisation agressive de l'état (Source 1 : Bosch Home Connect)
     const rawState = stateObj ? stateObj.state.toLowerCase().trim() : 'unavailable';
 
     let imgName = 'inactif';
     let color = '#7CFFB2'; 
 
-    // --- LOGIQUE SPÉCIFIQUE BOSCH HOME CONNECT ---
     if (type === 'dishwasher') {
-      // Les états Home Connect sont souvent : run, ready, inactive, finished
-      if (['run', 'running', 'on', 'active', 'washing'].includes(rawState)) {
+      const activeStates = ['run', 'running', 'on', 'active', 'washing', 'marche'];
+      const finishStates = ['finished', 'completed', 'terminé', 'fin'];
+      
+      if (activeStates.includes(rawState)) {
         imgName = 'enmarche';
         color = '#2ecc71';
-      } else if (['finished', 'completed', 'terminé'].includes(rawState)) {
+      } else if (finishStates.includes(rawState)) {
         imgName = 'terminer';
         color = '#2ecc71';
-      } else if (['ready', 'prêt'].includes(rawState)) {
+      } else if (rawState === 'ready' || rawState === 'pret') {
         imgName = 'pret';
         color = '#2ecc71';
       } else {
         imgName = 'inactif';
       }
-
     } else if (type === 'fridge') {
-      const isOpen = ['on', 'open', 'ouvert', 'true'].includes(rawState);
+      const isOpen = ['on', 'open', 'ouvert', 'true', 'opened'].includes(rawState);
       imgName = isOpen ? 'porteouverte' : 'portefermee';
       color = isOpen ? '#ff5252' : '#2ecc71';
-
-    } else if (type === 'washing_machine') {
-      const washingMap = { 'run': 'lavage', 'wash': 'lavage', 'rinse': 'rincage', 'spin': 'essorage', 'finished': 'findecycle', 'inactive': 'enveille' };
+    } else {
+      const washingMap = { 'run': 'lavage', 'wash': 'lavage', 'rinse': 'rincage', 'spin': 'essorage', 'finished': 'findecycle' };
       imgName = washingMap[rawState] || 'enveille';
       color = (imgName === 'findecycle') ? '#2ecc71' : '#7CFFB2';
     }
@@ -169,12 +200,12 @@ class ApplianceCard extends HTMLElement {
             <div id="sensor-container" style="flex: 1; display: flex; flex-direction: column; gap: 8px;"></div>
           </div>
           <style>
-            .nav-btn { flex:1; padding:6px; font-size:10px; border-radius:4px; border:none; cursor:pointer; font-weight:bold; }
+            .nav-btn { flex:1; padding:6px; font-size:10px; border-radius:4px; border:none; cursor:pointer; font-weight:bold; transition: 0.3s; }
           </style>
         </ha-card>`;
       this._base = this.querySelector('ha-card');
       this.querySelectorAll('.nav-btn').forEach(btn => {
-        btn.onclick = () => this._switch(btn.dataset.type);
+        btn.onclick = (e) => { e.stopPropagation(); this._switch(btn.dataset.type); };
       });
     }
 
