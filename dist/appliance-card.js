@@ -30,7 +30,7 @@ class ApplianceCardEditor extends HTMLElement {
                style="width:100%; padding:10px; margin:8px 0; background:#000; color:#fff; border:1px solid #444; box-sizing:border-box;"
                value="${(this._config.entities && this._config.entities[type]) || ''}">
 
-        <label style="font-weight: bold; color: #7CFFB2; font-size: 11px;">AJOUTER UN CAPTEUR / SWITCH</label>
+        <label style="font-weight: bold; color: #7CFFB2; font-size: 11px;">CAPTEURS SECONDAIRES</label>
         <div style="display: flex; gap: 5px; margin-top:8px;">
           <input id="new-sensor" type="text"
                  style="flex: 1; padding: 10px; background:#000; color:#fff; border:1px solid #444;"
@@ -44,24 +44,16 @@ class ApplianceCardEditor extends HTMLElement {
               <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
                 <span style="font-size: 10px; color:#aaa;">${s.entity}</span>
                 <button class="remove-btn" data-index="${i}"
-                        style="background:none; color:#ff5252; border:none; cursor:pointer; font-weight:bold;">
-                  Supprimer
-                </button>
+                        style="background:none; color:#ff5252; border:none; cursor:pointer; font-weight:bold;">Supprimer</button>
               </div>
               <input class="name-edit" data-index="${i}" type="text"
                      style="width:100%; background:#222; color:#fff; border:1px solid #555; padding:5px; font-size:11px; box-sizing:border-box;"
-                     value="${s.name || ''}" placeholder="Nom personnalisé">
+                     value="${s.name || ''}" placeholder="Titre">
             </div>
           `).join('')}
         </div>
       </div>
     `;
-
-    this.querySelectorAll('input').forEach(input => {
-      input.addEventListener('focus', () => { this._blockRender = true; });
-      input.addEventListener('blur',  () => { this._blockRender = false; });
-      input.addEventListener('keydown', (e) => e.stopPropagation());
-    });
 
     this.querySelectorAll('.type-btn').forEach(btn => {
       btn.onclick = () => this._updateConfig({ appliance_type: btn.dataset.type });
@@ -75,24 +67,13 @@ class ApplianceCardEditor extends HTMLElement {
 
     this.querySelector('#add-btn').onclick = () => {
       const input = this.querySelector('#new-sensor');
-      const val = input.value.trim();
-      if (val) {
+      if (input.value.trim()) {
         const allSensors = { ...(this._config.sensors || {}) };
-        allSensors[type] = [...(allSensors[type] || []), { entity: val, name: '' }];
+        allSensors[type] = [...(allSensors[type] || []), { entity: input.value.trim(), name: '' }];
         this._updateConfig({ sensors: allSensors });
         input.value = '';
       }
     };
-
-    this.querySelectorAll('.name-edit').forEach(input => {
-      input.onchange = (ev) => {
-        const idx = parseInt(ev.target.dataset.index);
-        const allSensors = JSON.parse(JSON.stringify(this._config.sensors || {}));
-        if(!allSensors[type]) allSensors[type] = [];
-        allSensors[type][idx].name = ev.target.value;
-        this._updateConfig({ sensors: allSensors });
-      };
-    });
 
     this.querySelectorAll('.remove-btn').forEach(btn => {
       btn.onclick = () => {
@@ -107,11 +88,7 @@ class ApplianceCardEditor extends HTMLElement {
   _updateConfig(newValues) {
     this._config = { ...this._config, ...newValues };
     this._rendered = false;
-    this.dispatchEvent(new CustomEvent('config-changed', {
-      detail: { config: this._config },
-      bubbles: true,
-      composed: true,
-    }));
+    this.dispatchEvent(new CustomEvent('config-changed', { detail: { config: this._config }, bubbles: true, composed: true }));
   }
 }
 customElements.define('appliance-card-editor', ApplianceCardEditor);
@@ -141,40 +118,28 @@ class ApplianceCard extends HTMLElement {
     const mainEnt = entities[type];
     const stateObj = this._hass.states[mainEnt];
     
-    // Normalisation agressive de l'état
+    // Normalisation de l'état (tout en minuscules, sans espaces)
     const rawState = stateObj ? stateObj.state.toLowerCase().trim() : 'off';
 
     let imgName = 'inactif';
     let color = '#7CFFB2'; 
 
-    // --- LOGIQUE LAVE-LINGE ---
-    if (type === 'washing_machine') {
-      const washingMap = {
-        'wash': 'lavage', 'washing': 'lavage', 'rinse': 'rincage', 'spin': 'essorage',
-        'finish': 'findecycle', 'off': 'enveille', 'none': 'enveille', 'on': 'lavage'
-      };
-      imgName = washingMap[rawState] || rawState.replace(/^ai_/, '');
-      const colors = { lavage: '#2980b9', rincage: '#1abc9c', findecycle: '#2ecc71' };
-      color = colors[imgName] || '#7CFFB2';
-
     // --- LOGIQUE LAVE-VAISSELLE ---
-    } else if (type === 'dishwasher') {
-      // Mapping étendu pour couvrir plus de marques
-      if (['running', 'on', 'en_cours', 'marche', 'active', 'washing'].includes(rawState)) {
+    if (type === 'dishwasher') {
+      const activeStates = ['on', 'running', 'active', 'marche', 'en_cours', 'washing'];
+      const finishStates = ['completed', 'finished', 'terminé', 'fin'];
+      
+      if (activeStates.includes(rawState)) {
         imgName = 'enmarche';
         color = '#2ecc71';
-      } else if (['completed', 'finished', 'terminé', 'fin'].includes(rawState)) {
+      } else if (finishStates.includes(rawState)) {
         imgName = 'terminer';
         color = '#2ecc71';
-      } else if (['ready', 'pret', 'prêt'].includes(rawState)) {
+      } else if (rawState === 'ready' || rawState === 'prêt') {
         imgName = 'pret';
         color = '#2ecc71';
-      } else if (['error', 'erreur', 'fault'].includes(rawState)) {
-        imgName = 'errour';
-        color = '#ff5252';
       } else {
         imgName = 'inactif';
-        color = '#7CFFB2';
       }
 
     // --- LOGIQUE FRIGO (PORTE) ---
@@ -182,17 +147,28 @@ class ApplianceCard extends HTMLElement {
       const isOpen = ['on', 'open', 'ouvert', 'true', 'opened'].includes(rawState);
       imgName = isOpen ? 'porteouverte' : 'portefermee';
       color = isOpen ? '#ff5252' : '#2ecc71';
+
+    // --- LOGIQUE LAVE-LINGE ---
+    } else if (type === 'washing_machine') {
+      const washingMap = {
+        'wash': 'lavage', 'washing': 'lavage', 'on': 'lavage',
+        'rinse': 'rincage', 'spin': 'essorage', 'finish': 'findecycle',
+        'off': 'enveille', 'none': 'enveille', 'idle': 'enveille'
+      };
+      imgName = washingMap[rawState] || 'enveille';
+      color = (imgName === 'findecycle') ? '#2ecc71' : '#7CFFB2';
     }
 
+    // URL de l'image (Cache-busting avec Date.now pour forcer la mise à jour)
     const imgUrl = `https://cdn.statically.io/gh/xez7082/-dist-appliance-card.js/main/img/${imgName}.png?v=${Date.now()}`;
 
     if (!this._base) {
       this.innerHTML = `
         <ha-card style="padding: 15px; background: #111; color: white; border-radius: 15px; border: 1px solid #333;">
           <div style="display: flex; gap: 5px; margin-bottom: 15px;">
-            <button class="nav-btn" data-type="washing_machine">LINGE</button>
-            <button class="nav-btn" data-type="dishwasher">VAISSELLE</button>
-            <button class="nav-btn" data-type="fridge">FRIGO</button>
+            <button class="tab-btn" data-type="washing_machine">LINGE</button>
+            <button class="tab-btn" data-type="dishwasher">VAISSELLE</button>
+            <button class="tab-btn" data-type="fridge">FRIGO</button>
           </div>
           <div style="display: flex; align-items: center; gap: 15px;">
             <div style="flex: 1.2; text-align: center;">
@@ -202,16 +178,16 @@ class ApplianceCard extends HTMLElement {
             <div id="sensor-container" style="flex: 1; display: flex; flex-direction: column; gap: 8px;"></div>
           </div>
           <style>
-            .nav-btn { flex:1; padding:6px; font-size:10px; border-radius:4px; border:none; cursor:pointer; font-weight:bold; transition: 0.3s; }
+            .tab-btn { flex:1; padding:6px; font-size:10px; border-radius:4px; border:none; cursor:pointer; font-weight:bold; }
           </style>
         </ha-card>`;
       this._base = this.querySelector('ha-card');
-      this.querySelectorAll('.nav-btn').forEach(btn => {
+      this.querySelectorAll('.tab-btn').forEach(btn => {
         btn.onclick = () => this._switch(btn.dataset.type);
       });
     }
 
-    this.querySelectorAll('.nav-btn').forEach(btn => {
+    this.querySelectorAll('.tab-btn').forEach(btn => {
       const active = btn.dataset.type === type;
       btn.style.background = active ? '#7CFFB2' : '#444';
       btn.style.color = active ? '#000' : '#fff';
@@ -222,7 +198,7 @@ class ApplianceCard extends HTMLElement {
     img.onerror = () => { img.src = 'https://cdn.statically.io/gh/xez7082/-dist-appliance-card.js/main/img/inactif.png'; };
 
     const stateText = this.querySelector('#state-text');
-    stateText.textContent = stateObj ? stateObj.state : 'DÉCONNECTÉ';
+    stateText.textContent = stateObj ? stateObj.state : 'OFF';
     stateText.style.color = color;
 
     const container = this.querySelector('#sensor-container');
@@ -230,23 +206,16 @@ class ApplianceCard extends HTMLElement {
     const sensors = (this._config.sensors && this._config.sensors[type]) || [];
 
     sensors.forEach(s => {
-      const sState = this._hass.states[s.entity];
-      if (!sState) return;
-      
+      const state = this._hass.states[s.entity];
+      if (!state) return;
       const div = document.createElement('div');
       const isActionable = s.entity.startsWith('switch.') || s.entity.startsWith('light.');
-      
       div.style.cssText = `background: rgba(255,255,255,0.05); padding: 8px; border-radius: 6px; border-left: 3px solid ${color}; cursor: ${isActionable ? 'pointer' : 'default'};`;
-      
-      const title = s.name || s.entity.split('.').pop().replace(/_/g, ' ');
       div.innerHTML = `
-        <div style="font-size: 8px; opacity: 0.6; text-transform: uppercase;">${title}</div>
-        <div style="font-size: 11px; font-weight: bold;">${sState.state.toUpperCase()} ${sState.attributes.unit_of_measurement || ''}</div>
+        <div style="font-size: 8px; opacity: 0.6; text-transform: uppercase;">${s.name || s.entity.split('.').pop()}</div>
+        <div style="font-size: 11px; font-weight: bold;">${state.state.toUpperCase()} ${state.attributes.unit_of_measurement || ''}</div>
       `;
-      
-      if (isActionable) {
-        div.onclick = () => this._hass.callService('homeassistant', 'toggle', { entity_id: s.entity });
-      }
+      if (isActionable) div.onclick = () => this._hass.callService('homeassistant', 'toggle', { entity_id: s.entity });
       container.appendChild(div);
     });
   }
