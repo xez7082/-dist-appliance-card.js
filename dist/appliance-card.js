@@ -34,47 +34,37 @@ class ApplianceCardEditor extends HTMLElement {
         <div style="display: flex; gap: 5px; margin-top:8px;">
           <input id="new-sensor" type="text"
                  style="flex: 1; padding: 10px; background:#000; color:#fff; border:1px solid #444;"
-                 placeholder="sensor.energie">
+                 placeholder="Ex: sensor.energie">
           <button id="add-btn" style="padding: 0 15px; background: #7CFFB2; border: none; font-weight: bold; cursor:pointer;">+</button>
         </div>
 
-        <div id="sensor-list" style="margin-top: 15px; display: flex; flex-direction: column; gap: 10px;">
+        <div id="sensor-list" style="margin-top: 15px; display: flex; flex-direction: column; gap: 8px;">
           ${((this._config.sensors && this._config.sensors[type]) || []).map((s, i) => `
-            <div style="background: #333; padding: 10px; border-radius: 6px; border: 1px solid #444;">
-              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                <span style="font-size: 9px; color:#aaa; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:150px;">${s.entity}</span>
+            <div style="background: #333; padding: 8px; border-radius: 4px; border: 1px solid #444;">
+              <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
+                <span style="font-size: 10px; color:#aaa;">${s.entity}</span>
                 <button class="remove-btn" data-index="${i}"
-                        style="background:#ff5252; color:white; border:none; border-radius:3px; padding:2px 8px; cursor:pointer; font-size:10px;">Supprimer</button>
+                        style="background:none; color:#ff5252; border:none; cursor:pointer; font-weight:bold;">Supprimer</button>
               </div>
               <input class="name-edit" data-index="${i}" type="text"
-                     style="width:100%; background:#222; color:#fff; border:1px solid #555; padding:8px; font-size:12px; box-sizing:border-box;"
-                     value="${s.name || ''}" placeholder="Nom à afficher (Label)">
+                     style="width:100%; background:#222; color:#fff; border:1px solid #555; padding:5px; font-size:11px; box-sizing:border-box;"
+                     value="${s.name || ''}" placeholder="Label">
             </div>
           `).join('')}
         </div>
       </div>
     `;
 
-    // Événements pour bloquer le rendu pendant l'édition
-    this.querySelectorAll('input').forEach(input => {
-      input.addEventListener('focus', () => { this._blockRender = true; });
-      input.addEventListener('blur',  () => { this._blockRender = false; });
-      input.addEventListener('keydown', (e) => e.stopPropagation());
-    });
-
-    // Changer le type d'appareil
     this.querySelectorAll('.type-btn').forEach(btn => {
       btn.onclick = () => this._updateConfig({ appliance_type: btn.dataset.type });
     });
 
-    // Entité principale
     this.querySelector('#main-ent').onchange = (ev) => {
       const entities = { ...(this._config.entities || {}) };
       entities[type] = ev.target.value;
       this._updateConfig({ entities });
     };
 
-    // Ajouter un capteur
     this.querySelector('#add-btn').onclick = () => {
       const input = this.querySelector('#new-sensor');
       if (input.value.trim()) {
@@ -85,7 +75,6 @@ class ApplianceCardEditor extends HTMLElement {
       }
     };
 
-    // VALIDATION DU LABEL (NAME) - Utilisation de 'blur' pour être sûr de valider en quittant le champ
     this.querySelectorAll('.name-edit').forEach(input => {
       input.onblur = (ev) => {
         const idx = parseInt(ev.target.dataset.index);
@@ -94,15 +83,8 @@ class ApplianceCardEditor extends HTMLElement {
         allSensors[type][idx].name = ev.target.value;
         this._updateConfig({ sensors: allSensors });
       };
-      // Permet de valider aussi avec la touche "Entrée"
-      input.onkeypress = (ev) => {
-        if (ev.key === 'Enter') {
-          ev.target.blur();
-        }
-      };
     });
 
-    // Supprimer un capteur
     this.querySelectorAll('.remove-btn').forEach(btn => {
       btn.onclick = () => {
         const index = parseInt(btn.dataset.index);
@@ -116,11 +98,7 @@ class ApplianceCardEditor extends HTMLElement {
   _updateConfig(newValues) {
     this._config = { ...this._config, ...newValues };
     this._rendered = false;
-    this.dispatchEvent(new CustomEvent('config-changed', {
-      detail: { config: this._config },
-      bubbles: true,
-      composed: true,
-    }));
+    this.dispatchEvent(new CustomEvent('config-changed', { detail: { config: this._config }, bubbles: true, composed: true }));
   }
 }
 customElements.define('appliance-card-editor', ApplianceCardEditor);
@@ -150,34 +128,31 @@ class ApplianceCard extends HTMLElement {
     const mainEnt = entities[type];
     const stateObj = this._hass.states[mainEnt];
     
-    // Normalisation agressive de l'état (Source 1 : Bosch Home Connect)
+    // Normalisation de l'état (Source 1 : Home Connect)[cite: 1]
     const rawState = stateObj ? stateObj.state.toLowerCase().trim() : 'unavailable';
 
     let imgName = 'inactif';
     let color = '#7CFFB2'; 
 
     if (type === 'dishwasher') {
-      const activeStates = ['run', 'running', 'on', 'active', 'washing', 'marche'];
-      const finishStates = ['finished', 'completed', 'terminé', 'fin'];
-      
-      if (activeStates.includes(rawState)) {
+      if (['run', 'running', 'on', 'active', 'washing'].includes(rawState)) {
         imgName = 'enmarche';
         color = '#2ecc71';
-      } else if (finishStates.includes(rawState)) {
+      } else if (['finished', 'completed', 'terminé'].includes(rawState)) {
         imgName = 'terminer';
         color = '#2ecc71';
-      } else if (rawState === 'ready' || rawState === 'pret') {
+      } else if (['ready', 'prêt'].includes(rawState)) {
         imgName = 'pret';
         color = '#2ecc71';
       } else {
         imgName = 'inactif';
       }
     } else if (type === 'fridge') {
-      const isOpen = ['on', 'open', 'ouvert', 'true', 'opened'].includes(rawState);
+      const isOpen = ['on', 'open', 'ouvert', 'true'].includes(rawState);
       imgName = isOpen ? 'porteouverte' : 'portefermee';
       color = isOpen ? '#ff5252' : '#2ecc71';
     } else {
-      const washingMap = { 'run': 'lavage', 'wash': 'lavage', 'rinse': 'rincage', 'spin': 'essorage', 'finished': 'findecycle' };
+      const washingMap = { 'run': 'lavage', 'wash': 'lavage', 'finished': 'findecycle' };
       imgName = washingMap[rawState] || 'enveille';
       color = (imgName === 'findecycle') ? '#2ecc71' : '#7CFFB2';
     }
@@ -187,25 +162,27 @@ class ApplianceCard extends HTMLElement {
     if (!this._base) {
       this.innerHTML = `
         <ha-card style="padding: 15px; background: #111; color: white; border-radius: 15px; border: 1px solid #333;">
-          <div style="display: flex; gap: 5px; margin-bottom: 15px;">
+          <div style="display: flex; gap: 5px; margin-bottom: 20px;">
             <button class="nav-btn" data-type="washing_machine">LINGE</button>
             <button class="nav-btn" data-type="dishwasher">VAISSELLE</button>
             <button class="nav-btn" data-type="fridge">FRIGO</button>
           </div>
-          <div style="display: flex; align-items: center; gap: 15px;">
-            <div style="flex: 1.2; text-align: center;">
-              <img id="main-img" style="width: 100%; height: 140px; object-fit: contain;">
-              <div id="state-text" style="font-weight: bold; margin-top: 8px; font-size: 11px; text-transform: uppercase;"></div>
+          <div style="display: flex; align-items: center; gap: 20px;">
+            <!-- PARTIE IMAGE AGRANDIE (Flex 2) -->
+            <div style="flex: 2; text-align: center;">
+              <img id="main-img" style="width: 100%; height: 220px; object-fit: contain;">
+              <div id="state-text" style="font-weight: bold; margin-top: 10px; font-size: 14px; text-transform: uppercase;"></div>
             </div>
-            <div id="sensor-container" style="flex: 1; display: flex; flex-direction: column; gap: 8px;"></div>
+            <!-- PARTIE CAPTEURS (Flex 1) -->
+            <div id="sensor-container" style="flex: 1; display: flex; flex-direction: column; gap: 10px;"></div>
           </div>
           <style>
-            .nav-btn { flex:1; padding:6px; font-size:10px; border-radius:4px; border:none; cursor:pointer; font-weight:bold; transition: 0.3s; }
+            .nav-btn { flex:1; padding:8px; font-size:11px; border-radius:6px; border:none; cursor:pointer; font-weight:bold; }
           </style>
         </ha-card>`;
       this._base = this.querySelector('ha-card');
       this.querySelectorAll('.nav-btn').forEach(btn => {
-        btn.onclick = (e) => { e.stopPropagation(); this._switch(btn.dataset.type); };
+        btn.onclick = () => this._switch(btn.dataset.type);
       });
     }
 
@@ -231,10 +208,10 @@ class ApplianceCard extends HTMLElement {
       const state = this._hass.states[s.entity];
       if (!state) return;
       const div = document.createElement('div');
-      div.style.cssText = `background: rgba(255,255,255,0.05); padding: 8px; border-radius: 6px; border-left: 3px solid ${color};`;
+      div.style.cssText = `background: rgba(255,255,255,0.05); padding: 10px; border-radius: 8px; border-left: 4px solid ${color};`;
       div.innerHTML = `
-        <div style="font-size: 8px; opacity: 0.6; text-transform: uppercase;">${s.name || s.entity.split('.').pop()}</div>
-        <div style="font-size: 10px; font-weight: bold;">${state.state.toUpperCase()} ${state.attributes.unit_of_measurement || ''}</div>
+        <div style="font-size: 9px; opacity: 0.6; text-transform: uppercase;">${s.name || s.entity.split('.').pop()}</div>
+        <div style="font-size: 12px; font-weight: bold;">${state.state.toUpperCase()} ${state.attributes.unit_of_measurement || ''}</div>
       `;
       container.appendChild(div);
     });
